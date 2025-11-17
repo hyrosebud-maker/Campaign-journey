@@ -9,10 +9,6 @@ from datetime import datetime, timedelta
 # -----------------------------
 
 def build_campaign_data():
-    """
-    47개 캠페인을 DataFrame 형태로 구성하고,
-    배치 캠페인(start/end)을 예시로 생성한다.
-    """
     base = datetime(2025, 11, 1)
 
     raw = [
@@ -68,11 +64,9 @@ def build_campaign_data():
     records = []
     for idx, row in enumerate(raw):
         cid, name, channel, trigger, is_batch, obj, branch, ctype = row
-
         start = base + timedelta(days=idx)
         end = start + timedelta(days=7 if is_batch else 1)
 
-        # Journey / Calendar 구분
         if trigger == "event" and obj in [
             "visit","browse","pdp","add_to_cart","checkout","purchase",
             "retention","nth_purchase","churn_risk","churned","loyalty"
@@ -139,10 +133,8 @@ def map_row_to_journey_stage(row):
         return "explore"
     if obj == "pdp":
         return "consider"
-
     if obj in ["add_to_cart", "checkout", "purchase"]:
         return "repeat" if branch == "loyalty" else "first_purchase"
-
     if obj == "retention":
         return "post_purchase"
     if obj == "nth_purchase":
@@ -153,12 +145,11 @@ def map_row_to_journey_stage(row):
         return "reactivation"
     if obj == "purchase_intent":
         return "consider"
-
     return None
 
 
 # -----------------------------
-# 2. Journey Chart (Altair)
+# 2. Journey Chart (1차원 화살표)
 # -----------------------------
 
 def build_journey_chart(df):
@@ -168,50 +159,65 @@ def build_journey_chart(df):
     if df.empty:
         return alt.Chart().mark_text(text="데이터 없음")
 
+    # 여정 스테이지를 x축 인덱스로 매핑
     stage_pos = {s: i for i, s in enumerate(JOURNEY_LINE)}
     df["stage_idx"] = df["journey_stage"].map(stage_pos)
 
-    # jitter Y
-    df["y_jitter"] = 0
+    # 각 스테이지 안에서 캠페인들을 좌우로만 살짝 분산 (x_jitter)
+    df["x_pos"] = 0.0
     for stage, g in df.groupby("journey_stage"):
-        if len(g) == 1:
-            offsets = [0]
+        base = stage_pos[stage]
+        n = len(g)
+        if n == 1:
+            offsets = [0.0]
         else:
-            offsets = np.linspace(-0.25, 0.25, len(g))
-        df.loc[g.index, "y_jitter"] = offsets
+            offsets = np.linspace(-0.25, 0.25, n)
+        df.loc[g.index, "x_pos"] = base + offsets
+    df["y_const"] = 0.0  # 모든 캠페인은 y=0 (진짜 1차원)
 
-    # stage info
+    # 스테이지 정보 (노드 + 라벨)
     stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
     stage_df = pd.DataFrame({
         "journey_stage": JOURNEY_LINE,
         "stage_idx": [stage_pos[s] for s in JOURNEY_LINE],
+        "y": 0.0,
         "label": [
             f"{pretty_stage_name(s)}\n({stage_counts.get(s,0)} 캠페인)"
             for s in JOURNEY_LINE
         ],
-        "y": 0
     })
 
-    base_line = alt.Chart(stage_df).mark_line(strokeWidth=4).encode(
-        x="stage_idx:Q",
-        y="y:Q"
+    # 여정 메인 라인
+    base_line = alt.Chart(stage_df).mark_rule(strokeWidth=4).encode(
+        x=alt.X("stage_idx:Q",
+                axis=alt.Axis(
+                    title="",
+                    values=[stage_pos[s] for s in JOURNEY_LINE],
+                    labelExpr="{'%s'}[datum.value]" % "','".join(
+                        [pretty_stage_name(s) for s in JOURNEY_LINE]
+                    )
+                )),
+        y=alt.Y("y:Q", axis=None),
     )
 
+    # 스테이지 노드
     stage_nodes = alt.Chart(stage_df).mark_square(size=200).encode(
         x="stage_idx:Q",
         y="y:Q",
         tooltip=["label"]
     )
 
+    # 스테이지 텍스트
     stage_text = alt.Chart(stage_df).mark_text(dy=-30).encode(
         x="stage_idx:Q",
         y="y:Q",
         text="label:N"
     )
 
+    # 캠페인 점 (x만 분산, y는 항상 0)
     campaign_nodes = alt.Chart(df).mark_circle(size=60).encode(
-        x="stage_idx:Q",
-        y="y_jitter:Q",
+        x="x_pos:Q",
+        y=alt.Y("y_const:Q", axis=None),
         color=alt.Color("channel:N", title="채널"),
         tooltip=[
             "campaign_id",
@@ -223,13 +229,17 @@ def build_journey_chart(df):
         ]
     )
 
-    return (base_line + stage_nodes + stage_text + campaign_nodes).properties(
+    chart = (base_line + stage_nodes + stage_text + campaign_nodes).properties(
         height=520
-    ).configure_view(strokeWidth=0)
+    ).configure_view(
+        strokeWidth=0
+    )
+
+    return chart
 
 
 # -----------------------------
-# 3. Calendar Chart (Altair)
+# 3. Calendar Chart
 # -----------------------------
 
 def build_calendar_chart(df):
@@ -272,7 +282,7 @@ def main():
 
     tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
 
-    # ------------------ Journey View ------------------
+    # Journey View
     with tab1:
         st.subheader("고객 여정 기반 캠페인 맵")
 
@@ -328,7 +338,7 @@ def main():
                 "is_batch_campaign","start_datetime","end_datetime"
             ]])
 
-    # ------------------ Calendar View ------------------
+    # Calendar View
     with tab2:
         st.subheader("배치성 마케팅 캘린더")
 
@@ -372,3 +382,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
