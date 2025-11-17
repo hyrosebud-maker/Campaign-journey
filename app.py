@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 # -----------------------------
 
 def build_campaign_data():
+    """
+    47개 캠페인 메타데이터 예시 생성 함수.
+    실제 환경에서는 여기 대신 SFMC / Adobe / 기타 솔루션 API 호출 결과를 매핑해서 사용.
+    """
     base = datetime(2025, 11, 1)
 
     raw = [
@@ -163,16 +167,20 @@ def build_journey_chart(df):
     stage_pos = {s: i for i, s in enumerate(JOURNEY_LINE)}
     df["stage_idx"] = df["journey_stage"].map(stage_pos)
 
-    # 각 스테이지 안에서 캠페인들을 좌우로만 살짝 분산 (x_jitter)
-    df["x_pos"] = 0.0
-    for stage, g in df.groupby("journey_stage"):
-        base = stage_pos[stage]
-        n = len(g)
-        if n == 1:
-            offsets = [0.0]
-        else:
-            offsets = np.linspace(-0.25, 0.25, n)
-        df.loc[g.index, "x_pos"] = base + offsets
+    # 각 스테이지 안에서 캠페인들을 좌우로만 분산 (x_jitter)
+    df["rank_in_stage"] = df.groupby("journey_stage").cumcount()
+    df["count_in_stage"] = df.groupby("journey_stage")["campaign_id"].transform("count")
+
+    # n==1 → offset=0, n>1 → -0.25~+0.25 범위에 균등 배치
+    def calc_offset(row):
+        n = row["count_in_stage"]
+        r = row["rank_in_stage"]
+        if n <= 1:
+            return 0.0
+        return (r / (n - 1) - 0.5) * 0.5
+
+    df["x_offset"] = df.apply(calc_offset, axis=1)
+    df["x_pos"] = df["stage_idx"] + df["x_offset"]
     df["y_const"] = 0.0  # 모든 캠페인은 y=0 (진짜 1차원)
 
     # 스테이지 정보 (노드 + 라벨)
@@ -189,14 +197,16 @@ def build_journey_chart(df):
 
     # 여정 메인 라인
     base_line = alt.Chart(stage_df).mark_rule(strokeWidth=4).encode(
-        x=alt.X("stage_idx:Q",
-                axis=alt.Axis(
-                    title="",
-                    values=[stage_pos[s] for s in JOURNEY_LINE],
-                    labelExpr="{'%s'}[datum.value]" % "','".join(
-                        [pretty_stage_name(s) for s in JOURNEY_LINE]
-                    )
-                )),
+        x=alt.X(
+            "stage_idx:Q",
+            axis=alt.Axis(
+                title="",
+                values=[stage_pos[s] for s in JOURNEY_LINE],
+                labelExpr="{'%s'}[datum.value]" % "','".join(
+                    [pretty_stage_name(s) for s in JOURNEY_LINE]
+                ),
+            ),
+        ),
         y=alt.Y("y:Q", axis=None),
     )
 
@@ -226,7 +236,7 @@ def build_journey_chart(df):
             "journey_stage",
             "primary_objective",
             "journey_branch",
-        ]
+        ],
     )
 
     chart = (base_line + stage_nodes + stage_text + campaign_nodes).properties(
@@ -263,7 +273,7 @@ def build_calendar_chart(df):
             "journey_branch",
             "Start",
             "Finish",
-        ]
+        ],
     ).properties(height=650).configure_view(strokeWidth=0)
 
 
@@ -272,10 +282,28 @@ def build_calendar_chart(df):
 # -----------------------------
 
 def main():
-    st.set_page_config(page_title="Journey & Calendar Campaign Map", layout="wide")
-    st.title("식품/유통 마케팅 캠페인 맵 (Journey + Calendar)")
+    st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
+    st.title("A사 마케팅 캠페인 Journey MAP")
 
-    df = build_campaign_data()
+    # 세션 상태에 캠페인 DF / 마지막 업데이트 시각 저장
+    if "campaign_df" not in st.session_state:
+        st.session_state["campaign_df"] = build_campaign_data()
+        st.session_state["last_updated"] = datetime.now()
+
+    # 상단: 캠페인 가져오기 (API 호출 시뮬레이션)
+    col_btn, col_info = st.columns([1, 3])
+    with col_btn:
+        if st.button("캠페인 가져오기 (API 호출)"):
+            # TODO: 실제 도입 시 여기서 SFMC / Adobe / 기타 솔루션 API 호출
+            st.session_state["campaign_df"] = build_campaign_data()
+            st.session_state["last_updated"] = datetime.now()
+            st.success("캠페인 메타데이터를 최신 상태로 갱신했습니다.")
+
+    with col_info:
+        ts = st.session_state["last_updated"].strftime("%Y-%m-%d %H:%M:%S")
+        st.markdown(f"**마지막 캠페인 동기화 시각:** {ts}")
+
+    df = st.session_state["campaign_df"]
 
     with st.expander("Raw Campaign List (47개)"):
         st.dataframe(df)
@@ -290,7 +318,7 @@ def main():
             "캠페인 종류 선택",
             ["여정 캠페인만", "캘린더성 캠페인만", "둘 다 보기"],
             horizontal=True,
-            key="view_mode_journey"
+            key="view_mode_journey",
         )
 
         if view_mode == "여정 캠페인만":
@@ -312,19 +340,19 @@ def main():
                 "채널 선택",
                 sorted(base_df["channel"].unique()),
                 default=sorted(base_df["channel"].unique()),
-                key="channel_filter_journey"
+                key="channel_filter_journey",
             )
             branch_filter = st.multiselect(
                 "브랜치 선택",
                 ["common", "churn", "loyalty"],
                 default=["common", "churn", "loyalty"],
-                format_func=lambda x: {"common":"공통","churn":"이탈","loyalty":"충성"}[x],
-                key="branch_filter_journey"
+                format_func=lambda x: {"common": "공통", "churn": "이탈", "loyalty": "충성"}[x],
+                key="branch_filter_journey",
             )
 
             filtered = base_df[
-                (base_df["channel"].isin(channel_filter)) &
-                (base_df["journey_branch"].isin(branch_filter))
+                (base_df["channel"].isin(channel_filter))
+                & (base_df["journey_branch"].isin(branch_filter))
             ].copy()
 
             filtered["journey_stage"] = filtered.apply(map_row_to_journey_stage, axis=1)
@@ -332,11 +360,22 @@ def main():
                 lambda x: pretty_stage_name(x) if pd.notnull(x) else ""
             )
 
-            st.dataframe(filtered[[
-                "campaign_id","campaign_name","channel",
-                "primary_objective","journey_branch","journey_label",
-                "is_batch_campaign","start_datetime","end_datetime"
-            ]])
+            st.markdown("### 선택된 조건의 캠페인 목록")
+            st.dataframe(
+                filtered[
+                    [
+                        "campaign_id",
+                        "campaign_name",
+                        "channel",
+                        "primary_objective",
+                        "journey_branch",
+                        "journey_label",
+                        "is_batch_campaign",
+                        "start_datetime",
+                        "end_datetime",
+                    ]
+                ]
+            )
 
     # Calendar View
     with tab2:
@@ -350,27 +389,36 @@ def main():
                 "채널 선택",
                 sorted(df["channel"].unique()),
                 default=sorted(df["channel"].unique()),
-                key="channel_filter_calendar"
+                key="channel_filter_calendar",
             )
             branch_filter_cal = st.multiselect(
                 "브랜치 선택",
-                ["common","churn","loyalty"],
-                default=["common","churn","loyalty"],
-                format_func=lambda x: {"common":"공통","churn":"이탈","loyalty":"충성"}[x],
-                key="branch_filter_calendar"
+                ["common", "churn", "loyalty"],
+                default=["common", "churn", "loyalty"],
+                format_func=lambda x: {"common": "공통", "churn": "이탈", "loyalty": "충성"}[x],
+                key="branch_filter_calendar",
             )
 
             calendar_df = df[
-                (df["is_batch_campaign"]) &
-                (df["channel"].isin(channel_filter_cal)) &
-                (df["journey_branch"].isin(branch_filter_cal))
+                (df["is_batch_campaign"])
+                & (df["channel"].isin(channel_filter_cal))
+                & (df["journey_branch"].isin(branch_filter_cal))
             ].copy()
 
-            st.dataframe(calendar_df[[
-                "campaign_id","campaign_name","channel",
-                "primary_objective","journey_branch",
-                "start_datetime","end_datetime"
-            ]])
+            st.markdown("### 배치성 캠페인 테이블")
+            st.dataframe(
+                calendar_df[
+                    [
+                        "campaign_id",
+                        "campaign_name",
+                        "channel",
+                        "primary_objective",
+                        "journey_branch",
+                        "start_datetime",
+                        "end_datetime",
+                    ]
+                ]
+            )
 
         with col2:
             if calendar_df.empty:
@@ -382,4 +430,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
