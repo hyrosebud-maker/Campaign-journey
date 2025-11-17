@@ -171,12 +171,12 @@ def build_journey_chart(df):
     df["rank_in_stage"] = df.groupby("journey_stage").cumcount()
     df["count_in_stage"] = df.groupby("journey_stage")["campaign_id"].transform("count")
 
-    # n==1 → offset=0, n>1 → -0.25~+0.25 범위에 균등 배치
     def calc_offset(row):
         n = row["count_in_stage"]
         r = row["rank_in_stage"]
         if n <= 1:
             return 0.0
+        # -0.25 ~ +0.25 범위
         return (r / (n - 1) - 0.5) * 0.5
 
     df["x_offset"] = df.apply(calc_offset, axis=1)
@@ -195,17 +195,11 @@ def build_journey_chart(df):
         ],
     })
 
-    # 여정 메인 라인
+    # 여정 메인 라인 (x축 라벨/눈금/그리드 전부 숨기기)
     base_line = alt.Chart(stage_df).mark_rule(strokeWidth=4).encode(
         x=alt.X(
             "stage_idx:Q",
-            axis=alt.Axis(
-                title="",
-                values=[stage_pos[s] for s in JOURNEY_LINE],
-                labelExpr="{'%s'}[datum.value]" % "','".join(
-                    [pretty_stage_name(s) for s in JOURNEY_LINE]
-                ),
-            ),
+            axis=alt.Axis(title="", labels=False, ticks=False, grid=False),
         ),
         y=alt.Y("y:Q", axis=None),
     )
@@ -214,14 +208,14 @@ def build_journey_chart(df):
     stage_nodes = alt.Chart(stage_df).mark_square(size=200).encode(
         x="stage_idx:Q",
         y="y:Q",
-        tooltip=["label"]
+        tooltip=["label"],
     )
 
-    # 스테이지 텍스트
+    # 스테이지 텍스트 (노드 위에 표시)
     stage_text = alt.Chart(stage_df).mark_text(dy=-30).encode(
         x="stage_idx:Q",
         y="y:Q",
-        text="label:N"
+        text="label:N",
     )
 
     # 캠페인 점 (x만 분산, y는 항상 0)
@@ -240,9 +234,9 @@ def build_journey_chart(df):
     )
 
     chart = (base_line + stage_nodes + stage_text + campaign_nodes).properties(
-        height=520
+        height=520,
     ).configure_view(
-        strokeWidth=0
+        strokeWidth=0,
     )
 
     return chart
@@ -274,7 +268,11 @@ def build_calendar_chart(df):
             "Start",
             "Finish",
         ],
-    ).properties(height=650).configure_view(strokeWidth=0)
+    ).properties(
+        height=650,
+    ).configure_view(
+        strokeWidth=0,
+    )
 
 
 # -----------------------------
@@ -310,23 +308,12 @@ def main():
 
     tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
 
-    # Journey View
+    # ------------------ Journey View 탭 ------------------
     with tab1:
         st.subheader("고객 여정 기반 캠페인 맵")
 
-        view_mode = st.radio(
-            "캠페인 종류 선택",
-            ["여정 캠페인만", "캘린더성 캠페인만", "둘 다 보기"],
-            horizontal=True,
-            key="view_mode_journey",
-        )
-
-        if view_mode == "여정 캠페인만":
-            base_df = df[df["view_assignment"].isin(["Journey", "Both"])].copy()
-        elif view_mode == "캘린더성 캠페인만":
-            base_df = df[df["view_assignment"].isin(["Calendar", "Both"])].copy()
-        else:
-            base_df = df.copy()
+        # Journey 전용 캠페인만 사용 (Journey / Both)
+        base_df = df[df["view_assignment"].isin(["Journey", "Both"])].copy()
 
         col1, col2 = st.columns([2, 1])
 
@@ -377,7 +364,7 @@ def main():
                 ]
             )
 
-    # Calendar View
+    # ------------------ Calendar View 탭 ------------------
     with tab2:
         st.subheader("배치성 마케팅 캘린더")
 
