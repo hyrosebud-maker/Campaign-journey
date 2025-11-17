@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
+import numpy as np
+import altair as alt
 from datetime import datetime, timedelta
 
 # -----------------------------
@@ -70,14 +70,10 @@ def build_campaign_data():
     for idx, row in enumerate(raw):
         cid, name, channel, trigger, is_batch, objective, branch, ctype = row
 
-        # 예시로 start/end를 생성 (배치 캠페인은 더 긴 기간)
-        start = base + timedelta(days=idx)  # 단순히 index 기반으로 날짜 분산
-        if is_batch:
-            end = start + timedelta(days=7)
-        else:
-            end = start + timedelta(days=1)
+        start = base + timedelta(days=idx)
+        end = start + timedelta(days=7 if is_batch else 1)
 
-        # Journey/Calendar 구분 로직
+        # Journey/Calendar 구분
         if trigger == "event" and objective in [
             "visit", "browse", "pdp", "add_to_cart",
             "checkout", "purchase", "retention",
@@ -87,11 +83,7 @@ def build_campaign_data():
         else:
             journey = False
 
-        if is_batch:
-            calendar = True
-        else:
-            calendar = False
-
+        calendar = bool(is_batch)
         view_assignment = "Both" if (journey and calendar) else ("Journey" if journey else "Calendar")
 
         records.append({
@@ -115,7 +107,6 @@ def build_campaign_data():
 # 1. Journey 정의 (최종 합의 버전)
 # -----------------------------
 
-# 내부 키 순서 (회원가입 → 탐색 → 고려 → 첫구매 → 구매 후 경험 → 재구매 → 로열티 → 휴면/재활성화)
 JOURNEY_LINE = [
     "onboarding",
     "explore",
@@ -142,213 +133,157 @@ def pretty_stage_name(stage_key: str) -> str:
 
 def map_row_to_journey_stage(row) -> str:
     """
-    primary_objective + journey_branch를 기반으로
-    우리가 합의한 최종 저니 스테이지로 매핑.
+    primary_objective + journey_branch 기반으로
+    최종 여정 스테이지로 매핑.
     """
     obj = row["primary_objective"]
     branch = row["journey_branch"]
 
-    # 1) 가입 & 온보딩
     if obj == "visit":
         return "onboarding"
-
-    # 2) 탐색 / 고려
     if obj == "browse":
         return "explore"
     if obj == "pdp":
         return "consider"
 
-    # 3) 첫 구매 vs 재구매 (장바구니/체크아웃/구매)
     if obj in ["add_to_cart", "checkout", "purchase"]:
         if branch == "loyalty":
             return "repeat"
         else:
             return "first_purchase"
 
-    # 4) 구매 후 경험
     if obj == "retention":
         return "post_purchase"
 
-    # 5) 재구매 (Nth Purchase)
     if obj == "nth_purchase":
         return "repeat"
 
-    # 6) 로열티
     if obj == "loyalty":
         return "loyalty"
 
-    # 7) 휴면/재활성화
     if obj in ["churn_risk", "churned"]:
         return "reactivation"
 
-    # 8) 프로모션성 구매 의도
     if obj == "purchase_intent":
-        # 첫 구매 전후 모두 붙을 수 있지만, 여기서는 '고려' 쪽에 붙임
         return "consider"
 
-    return None  # 매핑 안 되는 경우
+    return None
 
 
 # -----------------------------
-# 2. Journey View 시각화 (단일 선 위에 여정+캠페인)
+# 2. Journey View (Altair, 단일 선 위 여정+캠페인)
 # -----------------------------
 
-def build_journey_figure(df: pd.DataFrame) -> go.Figure:
-    """
-    하나의 선 위에 여정 포인트와 캠페인이 함께 보이도록 시각화.
-    - x축: 저니 스테이지 순서
-    - y=0: 기준 선
-    - 스테이지 노드: 큼직한 사각형 마커
-    - 캠페인 노드: 원형 마커 (채널별 색상)
-    """
-
-    # 저니 스테이지 매핑
+def build_journey_chart(df: pd.DataFrame) -> alt.Chart:
     df = df.copy()
     df["journey_stage"] = df.apply(map_row_to_journey_stage, axis=1)
-
-    # 매핑 안 된 행은 제외
     df = df[df["journey_stage"].notnull()]
     if df.empty:
-        return go.Figure()
+        return alt.Chart().mark_text(text="데이터가 없습니다.")
 
-    # x 좌표: 저니 라인 순서대로
-    x_positions = {stage: i for i, stage in enumerate(JOURNEY_LINE)}
-    stage_x = [x_positions[s] for s in JOURNEY_LINE]
-    stage_y = [0] * len(JOURNEY_LINE)
+    stage_pos = {s: i for i, s in enumerate(JOURNEY_LINE)}
+    df["stage_index"] = df["journey_stage"].map(stage_pos)
 
-    fig = go.Figure()
+    # jitter: 같은 스테이지 내 캠페인들을 위아래로 살짝 분산
+    df["y_jitter"] = 0.0
+    for stage, g in df.groupby("journey_stage"):
+        n = len(g)
+        if n == 1:
+            offsets = [0.0]
+        else:
+            offsets = np.linspace(-0.25, 0.25, n)
+        df.loc[g.index, "y_jitter"] = offsets
 
-    # 1) 메인 여정 라인
-    fig.add_trace(
-        go.Scatter(
-            x=stage_x,
-            y=stage_y,
-            mode="lines",
-            line=dict(width=4),
-            name="고객 여정 라인",
-            hoverinfo="skip",
-        )
-    )
-
-    # 2) 스테이지 노드 (사각형 마커 + 캠페인 수 표시)
     stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
+    stage_df = pd.DataFrame({
+        "journey_stage": JOURNEY_LINE,
+        "stage_index": [stage_pos[s] for s in JOURNEY_LINE],
+        "y": 0.0,
+        "label": [
+            f"{pretty_stage_name(s)}\n({stage_counts.get(s, 0)} 캠페인)"
+            for s in JOURNEY_LINE
+        ],
+    })
 
-    fig.add_trace(
-        go.Scatter(
-            x=[x_positions[s] for s in JOURNEY_LINE],
-            y=[0] * len(JOURNEY_LINE),
-            mode="markers+text",
-            marker=dict(
-                size=20,
-                symbol="square",
-                line=dict(width=1),
-            ),
-            text=[
-                f"{pretty_stage_name(s)}<br><sup>{stage_counts.get(s, 0)} 캠페인</sup>"
-                for s in JOURNEY_LINE
-            ],
-            textposition="top center",
-            hoverinfo="skip",
-            name="여정 스테이지",
-        )
+    line = alt.Chart(stage_df).mark_line(strokeWidth=4).encode(
+        x=alt.X("stage_index:Q", axis=alt.Axis(
+            title="",
+            values=[stage_pos[s] for s in JOURNEY_LINE],
+            labelExpr="{'%s'}[datum.value]" % "','".join([pretty_stage_name(s) for s in JOURNEY_LINE])
+        )),
+        y=alt.Y("y:Q", axis=None),
     )
 
-    # 3) 캠페인 노드 (여정 선 위에 같이 찍기, 약간의 jitter)
-    node_x = []
-    node_y = []
-    node_text = []
-    node_color = []
-
-    for _, row in df.iterrows():
-        stage = row["journey_stage"]
-        x = x_positions.get(stage)
-        if x is None:
-            continue
-
-        base_y = 0
-        # 너무 겹치지 않게 약간 위/아래로 분산
-        jitter = 0.15
-        offset = ((hash(row["campaign_id"]) % 100) / 100 - 0.5) * 2 * jitter
-        y = base_y + offset
-
-        node_x.append(x)
-        node_y.append(y)
-        node_text.append(
-            f"{row['campaign_name']}<br><sup>{row['channel']} / {row['campaign_id']}</sup>"
-        )
-        node_color.append(row["channel"])
-
-    fig.add_trace(
-        go.Scatter(
-            x=node_x,
-            y=node_y,
-            mode="markers",
-            marker=dict(
-                size=9,
-            ),
-            text=node_text,
-            hoverinfo="text",
-            name="캠페인",
-        )
+    stage_nodes = alt.Chart(stage_df).mark_square(size=200).encode(
+        x="stage_index:Q",
+        y="y:Q",
+        tooltip=["journey_stage", "label"],
     )
 
-    fig.update_layout(
-        title="고객 여정 상 캠페인 맵 (단일 라인)",
-        showlegend=True,
-        xaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            tickvals=[x_positions[s] for s in JOURNEY_LINE],
-            ticktext=[pretty_stage_name(s) for s in JOURNEY_LINE],
-        ),
-        yaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            visible=False,
-        ),
-        height=600,
-        margin=dict(l=20, r=20, t=60, b=20),
+    stage_text = alt.Chart(stage_df).mark_text(dy=-25).encode(
+        x="stage_index:Q",
+        y="y:Q",
+        text="label:N",
     )
 
-    return fig
+    campaigns = alt.Chart(df).mark_circle(size=60).encode(
+        x="stage_index:Q",
+        y="y_jitter:Q",
+        color=alt.Color("channel:N", legend=alt.Legend(title="채널")),
+        tooltip=[
+            "campaign_id",
+            "campaign_name",
+            "channel",
+            "journey_stage",
+            "primary_objective",
+            "journey_branch",
+        ],
+    )
+
+    chart = (line + stage_nodes + stage_text + campaigns).properties(
+        height=500
+    ).configure_view(
+        strokeWidth=0
+    )
+
+    return chart
 
 
 # -----------------------------
-# 3. Calendar View 시각화
+# 3. Calendar View (Altair Gantt)
 # -----------------------------
 
-def build_calendar_figure(df: pd.DataFrame) -> go.Figure:
-    """
-    배치성 캠페인(is_batch_campaign=True)을 중심으로
-    px.timeline 으로 Gantt 스타일 캘린더 뷰를 만든다.
-    """
-
+def build_calendar_chart(df: pd.DataFrame) -> alt.Chart:
     batch_df = df[df["is_batch_campaign"]].copy()
     if batch_df.empty:
-        return go.Figure()
+        return alt.Chart().mark_text(text="배치성 캠페인이 없습니다.")
 
     batch_df["Start"] = batch_df["start_datetime"]
     batch_df["Finish"] = batch_df["end_datetime"]
     batch_df["Campaign"] = batch_df["campaign_name"]
     batch_df["Channel"] = batch_df["channel"]
 
-    fig = px.timeline(
-        batch_df,
-        x_start="Start",
-        x_end="Finish",
-        y="Campaign",
-        color="Channel",
-        hover_data=["campaign_id", "primary_objective", "journey_branch"],
+    chart = alt.Chart(batch_df).mark_bar().encode(
+        x=alt.X("Start:T", title="기간 시작"),
+        x2="Finish:T",
+        y=alt.Y("Campaign:N", sort="-x", title="캠페인"),
+        color=alt.Color("Channel:N", title="채널"),
+        tooltip=[
+            "campaign_id",
+            "Campaign",
+            "Channel",
+            "primary_objective",
+            "journey_branch",
+            "Start",
+            "Finish",
+        ],
+    ).properties(
+        height=700
+    ).configure_view(
+        strokeWidth=0
     )
 
-    fig.update_yaxes(autorange="reversed")  # Gantt 스타일
-    fig.update_layout(
-        title="배치성 마케팅 캘린더 (타임라인 뷰)",
-        height=700,
-        margin=dict(l=20, r=20, t=60, b=20),
-    )
-
-    return fig
+    return chart
 
 
 # -----------------------------
@@ -365,7 +300,6 @@ def main():
 
     df = build_campaign_data()
 
-    # 상단: 원본 데이터 요약
     with st.expander("Raw Campaign List (47개)"):
         st.dataframe(df)
 
@@ -375,7 +309,6 @@ def main():
     with tab1:
         st.subheader("고객 여정 기반 캠페인 맵")
 
-        # 1) 제일 처음: 여정 캠페인 vs 캘린더성 캠페인 구분
         view_mode = st.radio(
             "캠페인 종류 선택",
             options=["여정 캠페인만", "캘린더성 캠페인만", "둘 다 보기"],
@@ -392,8 +325,8 @@ def main():
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            fig_journey = build_journey_figure(base_df)
-            st.plotly_chart(fig_journey, use_container_width=True)
+            chart = build_journey_chart(base_df)
+            st.altair_chart(chart, use_container_width=True)
 
         with col2:
             st.markdown("### 필터")
@@ -418,7 +351,6 @@ def main():
                 (base_df["journey_branch"].isin(branch_filter))
             ].copy()
 
-            # 여정 스테이지 표시용 컬럼 추가
             filtered["journey_stage"] = filtered.apply(map_row_to_journey_stage, axis=1)
             filtered["journey_stage_label"] = filtered["journey_stage"].apply(
                 lambda x: pretty_stage_name(x) if pd.notnull(x) else ""
@@ -442,9 +374,9 @@ def main():
 
             st.markdown(
                 """
-                - **굵은 선**: 고객 여정(가입 → 탐색 → 고려 → 첫구매 → 구매 후 경험 → 재구매 → 로열티 → 휴면/재활성화)  
-                - **사각형 노드**: 각 여정 스테이지 (아래에 해당 스테이지의 캠페인 수 표기)  
-                - **원형 점**: 해당 여정 단계에서 고객을 터치하는 개별 캠페인들 (채널별 색상 구분)  
+                - **굵은 선**: 가입 → 탐색 → 고려 → 첫구매 → 구매 후 경험 → 재구매 → 로열티 → 휴면/재활성화  
+                - **사각형 노드**: 각 여정 스테이지 (괄호 안은 캠페인 개수)  
+                - **원형 점**: 해당 여정 단계에서 실행되는 개별 캠페인 (채널별 색상)  
                 """
             )
 
@@ -495,21 +427,21 @@ def main():
             if calendar_df.empty:
                 st.info("선택된 조건에 해당하는 배치성 캠페인이 없습니다.")
             else:
-                fig_cal = build_calendar_figure(calendar_df)
-                st.plotly_chart(fig_cal, use_container_width=True)
+                cal_chart = build_calendar_chart(calendar_df)
+                st.altair_chart(cal_chart, use_container_width=True)
 
             st.markdown(
                 """
-                - **Timeline Bar**: 해당 기간 동안 운영되는 배치성 캠페인  
+                - **가로 Bar**: 해당 기간 동안 운영되는 배치성 캠페인  
                 - **색상**: 채널 구분 (Email, Kakao, Meta Ads 등)  
-                - Hover 시: 캠페인 ID, 여정 목적, 브랜치 정보 확인 가능  
+                - Hover 시: 캠페인 ID, 여정 목적, 브랜치 정보, 기간 확인 가능  
                 """
             )
 
     st.markdown("---")
     st.caption(
-        "※ 본 화면은 SF API에서 가져온 캠페인 메타데이터를 기반으로, "
-        "고객 여정(저니) 상의 터치포인트와 배치성 마케팅 일정을 한 번에 점검하기 위한 컨설팅형 대시보드 예시입니다."
+        "※ SF API에서 가져온 캠페인 메타데이터를 기반으로, "
+        "고객 여정 상 터치포인트와 배치성 마케팅 일정을 한 번에 점검하기 위한 예시 대시보드입니다."
     )
 
 
