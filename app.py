@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import altair as alt
 from datetime import datetime, timedelta
 
 # -----------------------------
@@ -8,10 +7,6 @@ from datetime import datetime, timedelta
 # -----------------------------
 
 def build_campaign_data():
-    """
-    47개 캠페인 메타데이터 예시 생성 함수.
-    실제 환경에서는 여기 대신 SFMC / Adobe / 기타 솔루션 API 호출 결과를 매핑해서 사용.
-    """
     base = datetime(2025, 11, 1)
 
     raw = [
@@ -151,22 +146,21 @@ def map_row_to_journey_stage(row):
 
 
 # -----------------------------
-# 2. Journey Chart (Altair 1차원 화살표)
+# 2. Journey SVG 생성 (1차원 타임라인)
 # -----------------------------
 
-def build_journey_chart(df: pd.DataFrame) -> alt.Chart:
+def build_journey_svg(df: pd.DataFrame) -> str:
     df = df.copy()
     df["journey_stage"] = df.apply(map_row_to_journey_stage, axis=1)
     df = df[df["journey_stage"].notnull()]
     if df.empty:
-        dummy = pd.DataFrame({"x":[0], "y":[0], "text":["데이터 없음"]})
-        return alt.Chart(dummy).mark_text().encode(x="x:Q", y="y:Q", text="text")
+        return "<p>표시할 여정 캠페인이 없습니다.</p>"
 
     # stage index
     stage_pos = {s: i for i, s in enumerate(JOURNEY_LINE)}
     df["stage_idx"] = df["journey_stage"].map(stage_pos)
 
-    # stage 내에서 좌우로만 분산
+    # stage 내 rank / count
     df["rank_in_stage"] = df.groupby("journey_stage").cumcount()
     df["count_in_stage"] = df.groupby("journey_stage")["campaign_id"].transform("count")
 
@@ -175,110 +169,106 @@ def build_journey_chart(df: pd.DataFrame) -> alt.Chart:
         r = row["rank_in_stage"]
         if n <= 1:
             return 0.0
-        return (r / (n - 1) - 0.5) * 0.5  # -0.25 ~ +0.25
+        return (r / (n - 1) - 0.5) * 20.0  # -20 ~ +20px
 
     df["x_offset"] = df.apply(calc_offset, axis=1)
-    df["x_pos"] = df["stage_idx"] + df["x_offset"]
-    df["y_pos"] = 0.0
 
-    # stage summary
+    # SVG 사이즈 & 베이스라인
+    width = 1200
+    height = 260
+    margin_left = 80
+    margin_right = 40
+    baseline_y = 140
+
+    n_stage = len(JOURNEY_LINE)
+    if n_stage <= 1:
+        gap = 200
+    else:
+        gap = (width - margin_left - margin_right) / (n_stage - 1)
+
+    # 채널별 색상 (없으면 기본 회색)
+    channel_colors = {
+        "Email": "#1f77b4",
+        "App Push": "#ff7f0e",
+        "KakaoTalk": "#ffcc00",
+        "SMS": "#2ca02c",
+        "Meta Ads": "#d62728",
+        "YouTube": "#c61c29",
+        "Google Ads": "#17becf",
+        "In-app Banner": "#9467bd",
+        "Display Ads": "#8c564b",
+    }
+
+    # stage별 캠페인 개수
     stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
-    stage_df = pd.DataFrame({
-        "journey_stage": JOURNEY_LINE,
-        "stage_idx": [stage_pos[s] for s in JOURNEY_LINE],
-        "y": 0.0,
-        "label": [
-            f"{pretty_stage_name(s)} ({stage_counts.get(s,0)} 캠페인)"
-            for s in JOURNEY_LINE
-        ],
-    })
 
-    # 라인용 데이터 (좌→우 화살표 느낌)
-    line_df = pd.DataFrame({
-        "x": [min(stage_df["stage_idx"]), max(stage_df["stage_idx"])],
-        "y": [0.0, 0.0],
-    })
+    svg_parts = []
+    svg_parts.append(f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">')
 
-    line = alt.Chart(line_df).mark_line(strokeWidth=4).encode(
-        x=alt.X("x:Q", axis=alt.Axis(title="", grid=False)),
-        y=alt.Y("y:Q", axis=None),
+    # 메인 라인
+    x0 = margin_left
+    x1 = margin_left + gap * (n_stage - 1)
+    svg_parts.append(
+        f'<line x1="{x0}" y1="{baseline_y}" x2="{x1}" y2="{baseline_y}" '
+        'stroke="#444" stroke-width="4" />'
     )
 
-    nodes = alt.Chart(stage_df).mark_square(size=150).encode(
-        x="stage_idx:Q",
-        y="y:Q",
-        tooltip=["label:N"],
-    )
+    # 스테이지 노드 + 라벨
+    for s in JOURNEY_LINE:
+        idx = stage_pos[s]
+        sx = margin_left + gap * idx
+        sy = baseline_y
+        count = stage_counts.get(s, 0)
+        label = pretty_stage_name(s)
 
-    labels = alt.Chart(stage_df).mark_text(dy=-20).encode(
-        x="stage_idx:Q",
-        y="y:Q",
-        text="label:N",
-    )
+        # 노드 (사각형)
+        svg_parts.append(
+            f'<rect x="{sx-7}" y="{sy-7}" width="14" height="14" fill="#444" rx="2" />'
+        )
+        # 라벨
+        svg_parts.append(
+            f'<text x="{sx}" y="{sy-20}" text-anchor="middle" font-size="12">'
+            f'{label} ({count} 캠페인)</text>'
+        )
 
-    campaigns = alt.Chart(df).mark_circle(size=60).encode(
-        x="x_pos:Q",
-        y=alt.Y("y_pos:Q", axis=None),
-        color=alt.Color("channel:N", title="채널"),
-        tooltip=[
-            "campaign_id",
-            "campaign_name",
-            "channel",
-            "journey_stage",
-            "primary_objective",
-            "journey_branch",
-        ],
-    )
+    # 캠페인 점
+    for _, row in df.iterrows():
+        idx = row["stage_idx"]
+        sx = margin_left + gap * idx + row["x_offset"]
+        sy = baseline_y
+        color = channel_colors.get(row["channel"], "#666666")
+        title = (
+            f"{row['campaign_name']} / {row['channel']} / "
+            f"{row['campaign_id']} / {row['primary_objective']}"
+        )
+        svg_parts.append(
+            f'<circle cx="{sx}" cy="{sy}" r="5" fill="{color}">'
+            f'<title>{title}</title></circle>'
+        )
 
-    chart = (line + nodes + labels + campaigns).properties(
-        height=450,
-    ).configure_view(
-        strokeWidth=0,
-    )
+    # 간단 채널 legend
+    legend_x = margin_left
+    legend_y = 30
+    svg_parts.append(f'<text x="{legend_x}" y="{legend_y-10}" font-size="12">채널 Legend</text>')
+    lx = legend_x
+    for ch, color in channel_colors.items():
+        svg_parts.append(
+            f'<rect x="{lx}" y="{legend_y}" width="12" height="12" fill="{color}" />'
+        )
+        svg_parts.append(
+            f'<text x="{lx+18}" y="{legend_y+10}" font-size="11">{ch}</text>'
+        )
+        legend_y += 18
+        if legend_y > 220:  # 너무 길어지면 2열로
+            legend_y = 30
+            lx += 120
 
-    return chart
+    svg_parts.append("</svg>")
+    return "".join(svg_parts)
 
 
 # -----------------------------
-# 3. Calendar Chart (Altair Gantt)
-# -----------------------------
-
-def build_calendar_chart(df: pd.DataFrame) -> alt.Chart:
-    batch_df = df[df["is_batch_campaign"]].copy()
-    if batch_df.empty:
-        dummy = pd.DataFrame({"x":[0], "y":[0], "text":["배치 캠페인 없음"]})
-        return alt.Chart(dummy).mark_text().encode(x="x:Q", y="y:Q", text="text")
-
-    batch_df["Start"] = batch_df["start_datetime"]
-    batch_df["Finish"] = batch_df["end_datetime"]
-    batch_df["Campaign"] = batch_df["campaign_name"]
-    batch_df["Channel"] = batch_df["channel"]
-
-    chart = alt.Chart(batch_df).mark_bar().encode(
-        x=alt.X("Start:T", title="시작"),
-        x2="Finish:T",
-        y=alt.Y("Campaign:N", sort="-x", title="캠페인"),
-        color=alt.Color("Channel:N", title="채널"),
-        tooltip=[
-            "campaign_id",
-            "campaign_name",
-            "channel",
-            "primary_objective",
-            "journey_branch",
-            "Start",
-            "Finish",
-        ],
-    ).properties(
-        height=650,
-    ).configure_view(
-        strokeWidth=0,
-    )
-
-    return chart
-
-
-# -----------------------------
-# 4. Streamlit Layout
+# 3. Streamlit Layout
 # -----------------------------
 
 def main():
@@ -290,7 +280,7 @@ def main():
         st.session_state["campaign_df"] = build_campaign_data()
         st.session_state["last_updated"] = datetime.now()
 
-    # 상단 버튼
+    # 상단 버튼 + 동기화 시각
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
         if st.button("캠페인 가져오기 (API 호출)"):
@@ -309,7 +299,7 @@ def main():
 
     tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
 
-    # Journey View
+    # ------------------ Journey View ------------------
     with tab1:
         st.subheader("고객 여정 기반 캠페인 맵")
 
@@ -318,8 +308,9 @@ def main():
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            chart = build_journey_chart(base_df)
-            st.altair_chart(chart, use_container_width=True)
+            # 필터 적용 전 전체 맵
+            svg = build_journey_svg(base_df)
+            st.markdown(svg, unsafe_allow_html=True)
 
         with col2:
             st.markdown("### 필터")
@@ -342,11 +333,6 @@ def main():
                 & (base_df["journey_branch"].isin(branch_filter))
             ].copy()
 
-            filtered["journey_stage"] = filtered.apply(map_row_to_journey_stage, axis=1)
-            filtered["journey_label"] = filtered["journey_stage"].apply(
-                lambda x: pretty_stage_name(x) if pd.notnull(x) else ""
-            )
-
             st.markdown("### 선택된 조건의 캠페인 목록")
             st.dataframe(
                 filtered[
@@ -356,7 +342,6 @@ def main():
                         "channel",
                         "primary_objective",
                         "journey_branch",
-                        "journey_label",
                         "is_batch_campaign",
                         "start_datetime",
                         "end_datetime",
@@ -364,52 +349,44 @@ def main():
                 ]
             )
 
-    # Calendar View
+    # ------------------ Calendar View ------------------
     with tab2:
-        st.subheader("배치성 마케팅 캘린더")
+        st.subheader("배치성 마케팅 캘린더 (테이블)")
 
-        col1, col2 = st.columns([1, 3])
+        channel_filter_cal = st.multiselect(
+            "채널 선택",
+            sorted(df["channel"].unique()),
+            default=sorted(df["channel"].unique()),
+            key="channel_filter_calendar",
+        )
+        branch_filter_cal = st.multiselect(
+            "브랜치 선택",
+            ["common", "churn", "loyalty"],
+            default=["common", "churn", "loyalty"],
+            format_func=lambda x: {"common": "공통", "churn": "이탈", "loyalty": "충성"}[x],
+            key="branch_filter_calendar",
+        )
 
-        with col1:
-            st.markdown("### 필터")
-            channel_filter_cal = st.multiselect(
-                "채널 선택",
-                sorted(df["channel"].unique()),
-                default=sorted(df["channel"].unique()),
-                key="channel_filter_calendar",
-            )
-            branch_filter_cal = st.multiselect(
-                "브랜치 선택",
-                ["common", "churn", "loyalty"],
-                default=["common", "churn", "loyalty"],
-                format_func=lambda x: {"common": "공통", "churn": "이탈", "loyalty": "충성"}[x],
-                key="branch_filter_calendar",
-            )
+        calendar_df = df[
+            (df["is_batch_campaign"])
+            & (df["channel"].isin(channel_filter_cal))
+            & (df["journey_branch"].isin(branch_filter_cal))
+        ].copy()
 
-            calendar_df = df[
-                (df["is_batch_campaign"])
-                & (df["channel"].isin(channel_filter_cal))
-                & (df["journey_branch"].isin(branch_filter_cal))
-            ].copy()
-
-            st.markdown("### 배치성 캠페인 테이블")
-            st.dataframe(
-                calendar_df[
-                    [
-                        "campaign_id",
-                        "campaign_name",
-                        "channel",
-                        "primary_objective",
-                        "journey_branch",
-                        "start_datetime",
-                        "end_datetime",
-                    ]
+        st.markdown("### 배치성 캠페인 목록")
+        st.dataframe(
+            calendar_df[
+                [
+                    "campaign_id",
+                    "campaign_name",
+                    "channel",
+                    "primary_objective",
+                    "journey_branch",
+                    "start_datetime",
+                    "end_datetime",
                 ]
-            )
-
-        with col2:
-            cal_chart = build_calendar_chart(calendar_df)
-            st.altair_chart(cal_chart, use_container_width=True)
+            ]
+        )
 
 
 if __name__ == "__main__":
