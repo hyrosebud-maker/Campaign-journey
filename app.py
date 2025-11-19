@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 
@@ -163,7 +164,7 @@ def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
 
         row_idx = 0
         while row_idx < len(rows_right_edge) and left <= rows_right_edge[row_idx]:
-            row_idx += 1
+       	    row_idx += 1
 
         if row_idx == len(rows_right_edge):
             rows_right_edge.append(right)
@@ -199,12 +200,12 @@ STORY_INDEX = {cid: i for i, cid in enumerate(STORY_SEQUENCE)}
 PRE_SIGNUP_IDS = {"CMP019", "CMP020", "CMP026"}
 
 
-def build_journey_svg(df: pd.DataFrame) -> str:
+def build_journey_svg(df: pd.DataFrame):
     df = df.copy()
     df["journey_stage"] = df.apply(map_row_to_journey_stage, axis=1)
     df = df[df["journey_stage"].notnull()]
     if df.empty:
-        return "<p>표시할 여정 캠페인이 없습니다.</p>"
+        return "<p>표시할 여정 캠페인이 없습니다.</p>", 120
 
     # --- 스토리 순서 기반 x좌표 ---
     df["story_idx"] = df["campaign_id"].map(STORY_INDEX)
@@ -214,9 +215,8 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     if n <= 1:
         n = 2
 
-    # 🔧 폭/마진 조정 (왼쪽 정렬)
     width = 1400
-    margin_left = 0       # 컨테이너 왼쪽에 딱 붙게
+    margin_left = 40
     margin_right = 40
     baseline_y = 130
 
@@ -234,7 +234,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         if not sub.empty:
             stage_x[stage] = sub["x"].mean()
 
-    # 빈 스테이지는 보간
     for i, stage in enumerate(JOURNEY_LINE):
         if stage in stage_x:
             continue
@@ -268,7 +267,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         "Display Ads": "#8c564b",
     }
 
-    # --- 캠페인 라벨 배치 계산 ---
     label_base_y = baseline_y + 30
     label_items = []
     for _, r in df.iterrows():
@@ -283,7 +281,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     height = label_base_y + (max_row + 1) * row_gap + 60
 
     svg = []
-    # ★ 여기서 preserveAspectRatio 로 SVG 를 항상 왼쪽 기준(xMin)으로 붙임
     svg.append(
         f'<svg width="100%" height="{height}" '
         f'viewBox="0 0 {width} {height}" preserveAspectRatio="xMinYMin meet" '
@@ -328,7 +325,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         centers.append(stage_x[stage])
         widths.append(len(label) * stage_char_width)
 
-    # 왼쪽->오른쪽
     min_center = x_min + widths[0] / 2 + outer_margin
     centers[0] = max(centers[0], min_center)
     for i in range(1, len(JOURNEY_LINE)):
@@ -336,7 +332,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         if centers[i] < min_center:
             centers[i] = min_center
 
-    # 오른쪽->왼쪽
     max_center = x_max - widths[-1] / 2 - outer_margin
     centers[-1] = min(centers[-1], max_center)
     for i in range(len(JOURNEY_LINE)-2, -1, -1):
@@ -354,7 +349,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         svg.append(
             f'<rect x="{sx-8}" y="{sy-8}" width="16" height="16" fill="#444" rx="3" />'
         )
-    #
         svg.append(
             f'<text x="{sx}" y="{sy-22}" text-anchor="middle" '
             f'font-size="13" fill="#111">{label}</text>'
@@ -425,7 +419,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         )
 
     svg.append("</svg>")
-    return "".join(svg)
+    return "".join(svg), height
 
 
 # ---------------------------------
@@ -435,7 +429,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 def main():
     st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
 
-    # 컨테이너 좌우 padding 최소화
     st.markdown(
         """
         <style>
@@ -492,8 +485,18 @@ def main():
             & (base_df["journey_branch"].isin(branch_filter))
         ].copy()
 
-        svg = build_journey_svg(filtered)
-        st.markdown(svg, unsafe_allow_html=True)
+        svg, svg_height = build_journey_svg(filtered)
+
+        # ❗ 여기서 왼쪽 얼라인을 강제로 맞춤 (DataFrame 시작 위치에 맞춰 -24px 정도 당김)
+        components.html(
+            f"""
+            <div style="margin-left:-24px; margin-right:0; padding:0;">
+                {svg}
+            </div>
+            """,
+            height=svg_height + 30,
+            scrolling=False,
+        )
 
         st.markdown("### 선택된 캠페인 목록")
         st.dataframe(
