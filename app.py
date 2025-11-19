@@ -216,7 +216,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 
     # 🔧 폭/마진 조정 (왼쪽 정렬)
     width = 1400
-    margin_left = 0       # ← 왼쪽 여백 제거해서 테이블과 얼라인
+    margin_left = 0       # 컨테이너 왼쪽으로 최대한 붙이기
     margin_right = 40
     baseline_y = 130
 
@@ -431,6 +431,20 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 
 def main():
     st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
+
+    # 🔧 컨테이너 좌우 padding 제거 → SVG와 테이블 완전 왼쪽 정렬
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            padding-left: 0rem !important;
+            padding-right: 0rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.title("A사 마케팅 캠페인 Journey MAP")
 
     df = build_campaign_data()
