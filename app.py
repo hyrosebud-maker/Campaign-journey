@@ -146,28 +146,21 @@ def map_row_to_journey_stage(row):
 
 
 # -----------------------------
-# 2. 레이블 행(row) 자동 배정
+# 2. 레이블 행(row) 자동 배정 (캠페인명)
 # -----------------------------
 
 def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
-    """
-    label_items: [{ "x": float, "text": str, "row": <df_row> }, ...]
-    -> 각 라벨을 겹치지 않게 행에 배치하고 (item, row_index, y)를 반환
-    """
-    rows_right_edge = []  # 각 row별 마지막 right x
+    rows_right_edge = []
     placements = []
-    padding = 8           # 양 옆 여백(px)
+    padding = 8
 
-    # x 기준 왼쪽→오른쪽 정렬
     for item in sorted(label_items, key=lambda d: d["x"]):
         x = float(item["x"])
         text = str(item["text"])
-
         width = len(text) * char_width
         left = x - width / 2 - padding
         right = x + width / 2 + padding
 
-        # 사용할 수 있는 row 찾기
         row_idx = 0
         while row_idx < len(rows_right_edge) and left <= rows_right_edge[row_idx]:
             row_idx += 1
@@ -195,7 +188,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     if df.empty:
         return "<p>표시할 여정 캠페인이 없습니다.</p>"
 
-    # CMP001 ~ CMP047 순서
+    # CMP001 ~ CMP047 순서 기준으로 x좌표 부여 (스토리라인 순서)
     df["story_idx"] = df["campaign_id"].str[3:].astype(int) - 1
     df = df.sort_values("story_idx").reset_index(drop=True)
 
@@ -211,13 +204,14 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     step = (width - margin_left - margin_right) / (n - 1)
     df["x"] = df["story_idx"].apply(lambda i: margin_left + i * step)
 
-    # 스테이지 x 좌표
+    # --- 스테이지 x좌표 (캠페인 분포 기반) ---
     stage_x = {}
     for stage in JOURNEY_LINE:
         sub = df[df["journey_stage"] == stage]
         if not sub.empty:
             stage_x[stage] = sub["x"].mean()
 
+    # 캠페인이 없는 스테이지는 주변 스테이지 참고해서 보간
     for i, stage in enumerate(JOURNEY_LINE):
         if stage in stage_x:
             continue
@@ -239,6 +233,46 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         else:
             stage_x[stage] = margin_left + i * step
 
+    # --- 스테이지 라벨끼리도 겹치지 않도록 x좌표 재조정 ---
+    x_min = df["x"].min()
+    x_max = df["x"].max()
+
+    stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
+
+    stage_char_width = 9
+    stage_gap = 20
+    outer_margin = 10
+
+    centers = []
+    widths = []
+    labels = []
+
+    for stage in JOURNEY_LINE:
+        label = f"{pretty_stage_name(stage)} ({stage_counts.get(stage, 0)}캠페인)"
+        labels.append(label)
+        centers.append(stage_x[stage])
+        widths.append(len(label) * stage_char_width)
+
+    # 왼쪽 -> 오른쪽 패스
+    min_center = x_min + widths[0] / 2 + outer_margin
+    centers[0] = max(centers[0], min_center)
+    for i in range(1, len(JOURNEY_LINE)):
+        min_center = centers[i-1] + (widths[i-1] + widths[i]) / 2 + stage_gap
+        if centers[i] < min_center:
+            centers[i] = min_center
+
+    # 오른쪽 -> 왼쪽 패스
+    max_center = x_max - widths[-1] / 2 - outer_margin
+    centers[-1] = min(centers[-1], max_center)
+    for i in range(len(JOURNEY_LINE)-2, -1, -1):
+        max_center = centers[i+1] - (widths[i+1] + widths[i]) / 2 + (-stage_gap)
+        if centers[i] > max_center:
+            centers[i] = max_center
+
+    # 조정된 center를 stage_x에 반영
+    for idx, stage in enumerate(JOURNEY_LINE):
+        stage_x[stage] = centers[idx]
+
     channel_colors = {
         "Email": "#1f77b4",
         "App Push": "#ff7f0e",
@@ -251,15 +285,11 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         "Display Ads": "#8c564b",
     }
 
-    # --- 레이블 배치 먼저 계산 (height 결정) ---
+    # --- 캠페인 라벨 배치 계산 (height 결정) ---
     label_base_y = baseline_y + 30
     label_items = []
     for _, r in df.iterrows():
-        label_items.append({
-            "x": float(r["x"]),
-            "text": str(r["campaign_name"]),
-            "row": r,
-        })
+        label_items.append({"x": float(r["x"]), "text": str(r["campaign_name"]), "row": r})
 
     placements, max_row, row_gap = assign_label_rows(
         label_items,
@@ -267,7 +297,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         char_width=9,
         row_gap=22,
     )
-
     height = label_base_y + (max_row + 1) * row_gap + 60
 
     svg = []
@@ -291,21 +320,17 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         x_cursor += legend_x_gap
 
     # 2) 기본 여정 라인
-    x_min = df["x"].min()
-    x_max = df["x"].max()
     svg.append(
         f'<line x1="{x_min}" y1="{baseline_y}" x2="{x_max}" y2="{baseline_y}" '
         'stroke="#444" stroke-width="4" />'
     )
 
-    # 3) 스테이지 박스 + 텍스트
-    stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
-    for stage in JOURNEY_LINE:
-        sx = stage_x[stage]
+    # 3) 스테이지 박스 + 텍스트 (겹치지 않게 조정된 center 사용)
+    for i, stage in enumerate(JOURNEY_LINE):
+        sx = centers[i]
         sy = baseline_y
         count = stage_counts.get(stage, 0)
         label = pretty_stage_name(stage)
-
         svg.append(
             f'<rect x="{sx-8}" y="{sy-8}" width="16" height="16" fill="#444" rx="3" />'
         )
@@ -360,7 +385,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'font-size="10" fill="{color}">{spec["label"]}</text>'
         )
 
-    # 5) 47개 캠페인 점 + 라벨 (행 배치 결과 사용)
+    # 5) 47개 캠페인 점 + 라벨
     for item, row_idx, label_y in placements:
         r = item["row"]
         x = float(item["x"])
@@ -371,9 +396,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'<line x1="{x}" y1="{baseline_y+8}" x2="{x}" y2="{line_y2}" '
             'stroke="#bbbbbb" stroke-width="1" />'
         )
-        svg.append(
-            f'<circle cx="{x}" cy="{baseline_y}" r="4" fill="{color}" />'
-        )
+        svg.append(f'<circle cx="{x}" cy="{baseline_y}" r="4" fill="{color}" />')
         svg.append(
             f'<text x="{x}" y="{label_y}" text-anchor="middle" '
             'font-size="9" fill="#222">'
@@ -399,7 +422,6 @@ def main():
     with col_btn:
         if st.button("캠페인 가져오기 (API 호출)", help="데모용: 현재는 고정 데이터 사용"):
             st.success("데모용 고정 데이터 기준으로 캠페인 정보를 불러왔습니다.")
-
     with col_info:
         ts = last_updated.strftime("%Y-%m-%d %H:%M:%S")
         st.markdown(f"**마지막 캠페인 동기화 시각:** {ts}")
