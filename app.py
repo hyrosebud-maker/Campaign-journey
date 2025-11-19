@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import altair as alt
 from datetime import datetime, timedelta
-
-import plotly.graph_objects as go
-import plotly.express as px
 
 # -----------------------------
 # 0. 기본 데이터 세팅
@@ -81,8 +78,7 @@ def build_campaign_data():
         else:
             journey = False
 
-        calendar = bool(is_batch)
-        view_assignment = "Both" if (journey and calendar) else ("Journey" if journey else "Calendar")
+        view_assignment = "Both" if (journey and is_batch) else ("Journey" if journey else "Calendar")
 
         records.append({
             "campaign_id": cid,
@@ -155,17 +151,16 @@ def map_row_to_journey_stage(row):
 
 
 # -----------------------------
-# 2. Journey Chart (Plotly 1차원 화살표)
+# 2. Journey Chart (Altair 1차원 화살표)
 # -----------------------------
 
-def build_journey_figure(df: pd.DataFrame) -> go.Figure:
+def build_journey_chart(df: pd.DataFrame) -> alt.Chart:
     df = df.copy()
     df["journey_stage"] = df.apply(map_row_to_journey_stage, axis=1)
     df = df[df["journey_stage"].notnull()]
     if df.empty:
-        fig = go.Figure()
-        fig.add_annotation(text="데이터 없음", showarrow=False, x=0.5, y=0.5, xref="paper", yref="paper")
-        return fig
+        dummy = pd.DataFrame({"x":[0], "y":[0], "text":["데이터 없음"]})
+        return alt.Chart(dummy).mark_text().encode(x="x:Q", y="y:Q", text="text")
 
     # stage index
     stage_pos = {s: i for i, s in enumerate(JOURNEY_LINE)}
@@ -188,118 +183,98 @@ def build_journey_figure(df: pd.DataFrame) -> go.Figure:
 
     # stage summary
     stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
+    stage_df = pd.DataFrame({
+        "journey_stage": JOURNEY_LINE,
+        "stage_idx": [stage_pos[s] for s in JOURNEY_LINE],
+        "y": 0.0,
+        "label": [
+            f"{pretty_stage_name(s)} ({stage_counts.get(s,0)} 캠페인)"
+            for s in JOURNEY_LINE
+        ],
+    })
 
-    fig = go.Figure()
+    # 라인용 데이터 (좌→우 화살표 느낌)
+    line_df = pd.DataFrame({
+        "x": [min(stage_df["stage_idx"]), max(stage_df["stage_idx"])],
+        "y": [0.0, 0.0],
+    })
 
-    # 메인 여정 라인 + 화살표 느낌
-    min_x = -0.5
-    max_x = len(JOURNEY_LINE) - 0.5
-    fig.add_trace(
-        go.Scatter(
-            x=[min_x, max_x],
-            y=[0, 0],
-            mode="lines",
-            line=dict(width=4),
-            hoverinfo="skip",
-            showlegend=False,
-        )
+    line = alt.Chart(line_df).mark_line(strokeWidth=4).encode(
+        x=alt.X("x:Q", axis=alt.Axis(title="", grid=False)),
+        y=alt.Y("y:Q", axis=None),
     )
 
-    # stage 노드 + 라벨
-    stage_x = []
-    stage_y = []
-    stage_text = []
-    for s in JOURNEY_LINE:
-        stage_x.append(stage_pos[s])
-        stage_y.append(0)
-        stage_text.append(f"{pretty_stage_name(s)}\n({stage_counts.get(s,0)} 캠페인)")
-
-    fig.add_trace(
-        go.Scatter(
-            x=stage_x,
-            y=stage_y,
-            mode="markers+text",
-            marker=dict(size=14, symbol="square"),
-            text=stage_text,
-            textposition="top center",
-            hoverinfo="text",
-            showlegend=False,
-        )
+    nodes = alt.Chart(stage_df).mark_square(size=150).encode(
+        x="stage_idx:Q",
+        y="y:Q",
+        tooltip=["label:N"],
     )
 
-    # 캠페인 점 (채널별 색)
-    fig.add_trace(
-        go.Scatter(
-            x=df["x_pos"],
-            y=df["y_pos"],
-            mode="markers",
-            marker=dict(size=9),
-            text=df.apply(
-                lambda r: f"{r['campaign_name']}<br>{r['channel']} / {r['campaign_id']}",
-                axis=1,
-            ),
-            hoverinfo="text",
-            name="캠페인",
-        )
+    labels = alt.Chart(stage_df).mark_text(dy=-20).encode(
+        x="stage_idx:Q",
+        y="y:Q",
+        text="label:N",
     )
 
-    # 채널을 legend로 보이게 하려면 channel별 trace로 나눌 수도 있는데,
-    # 일단은 전체 캠페인 하나로 두고 hover에서 채널 표시 (간단 버전)
-
-    fig.update_layout(
-        height=520,
-        margin=dict(l=20, r=20, t=40, b=40),
-        xaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            tickmode="array",
-            tickvals=list(stage_pos.values()),
-            ticktext=[pretty_stage_name(s) for s in JOURNEY_LINE],
-        ),
-        yaxis=dict(
-            showgrid=False,
-            zeroline=False,
-            visible=False,
-            range=[-0.6, 0.8],
-        ),
-        showlegend=False,
-        title_text="",
+    campaigns = alt.Chart(df).mark_circle(size=60).encode(
+        x="x_pos:Q",
+        y=alt.Y("y_pos:Q", axis=None),
+        color=alt.Color("channel:N", title="채널"),
+        tooltip=[
+            "campaign_id",
+            "campaign_name",
+            "channel",
+            "journey_stage",
+            "primary_objective",
+            "journey_branch",
+        ],
     )
 
-    return fig
+    chart = (line + nodes + labels + campaigns).properties(
+        height=450,
+    ).configure_view(
+        strokeWidth=0,
+    )
+
+    return chart
 
 
 # -----------------------------
-# 3. Calendar Chart (Plotly Timeline)
+# 3. Calendar Chart (Altair Gantt)
 # -----------------------------
 
-def build_calendar_figure(df: pd.DataFrame) -> go.Figure:
+def build_calendar_chart(df: pd.DataFrame) -> alt.Chart:
     batch_df = df[df["is_batch_campaign"]].copy()
     if batch_df.empty:
-        fig = go.Figure()
-        fig.add_annotation(text="배치 캠페인 없음", showarrow=False, x=0.5, y=0.5, xref="paper", yref="paper")
-        return fig
+        dummy = pd.DataFrame({"x":[0], "y":[0], "text":["배치 캠페인 없음"]})
+        return alt.Chart(dummy).mark_text().encode(x="x:Q", y="y:Q", text="text")
 
     batch_df["Start"] = batch_df["start_datetime"]
     batch_df["Finish"] = batch_df["end_datetime"]
     batch_df["Campaign"] = batch_df["campaign_name"]
     batch_df["Channel"] = batch_df["channel"]
 
-    fig = px.timeline(
-        batch_df,
-        x_start="Start",
-        x_end="Finish",
-        y="Campaign",
-        color="Channel",
-        hover_data=["campaign_id", "primary_objective", "journey_branch"],
+    chart = alt.Chart(batch_df).mark_bar().encode(
+        x=alt.X("Start:T", title="시작"),
+        x2="Finish:T",
+        y=alt.Y("Campaign:N", sort="-x", title="캠페인"),
+        color=alt.Color("Channel:N", title="채널"),
+        tooltip=[
+            "campaign_id",
+            "campaign_name",
+            "channel",
+            "primary_objective",
+            "journey_branch",
+            "Start",
+            "Finish",
+        ],
+    ).properties(
+        height=650,
+    ).configure_view(
+        strokeWidth=0,
     )
-    fig.update_yaxes(autorange="reversed")
-    fig.update_layout(
-        title="배치성 마케팅 캘린더 (타임라인 뷰)",
-        height=700,
-        margin=dict(l=20, r=20, t=60, b=40),
-    )
-    return fig
+
+    return chart
 
 
 # -----------------------------
@@ -315,11 +290,10 @@ def main():
         st.session_state["campaign_df"] = build_campaign_data()
         st.session_state["last_updated"] = datetime.now()
 
-    # 상단: 캠페인 가져오기 버튼
+    # 상단 버튼
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
         if st.button("캠페인 가져오기 (API 호출)"):
-            # TODO: 실제 환경에서는 여기서 API 콜 해서 df 갱신
             st.session_state["campaign_df"] = build_campaign_data()
             st.session_state["last_updated"] = datetime.now()
             st.success("캠페인 메타데이터를 최신 상태로 갱신했습니다.")
@@ -335,18 +309,17 @@ def main():
 
     tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
 
-    # ------------------ Journey View ------------------
+    # Journey View
     with tab1:
         st.subheader("고객 여정 기반 캠페인 맵")
 
-        # Journey 전용 캠페인 (Journey / Both)
         base_df = df[df["view_assignment"].isin(["Journey", "Both"])].copy()
 
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            fig_journey = build_journey_figure(base_df)
-            st.plotly_chart(fig_journey, use_container_width=True)
+            chart = build_journey_chart(base_df)
+            st.altair_chart(chart, use_container_width=True)
 
         with col2:
             st.markdown("### 필터")
@@ -391,7 +364,7 @@ def main():
                 ]
             )
 
-    # ------------------ Calendar View ------------------
+    # Calendar View
     with tab2:
         st.subheader("배치성 마케팅 캘린더")
 
@@ -435,11 +408,8 @@ def main():
             )
 
         with col2:
-            if calendar_df.empty:
-                st.info("해당 조건의 배치 캠페인 없음")
-            else:
-                fig_cal = build_calendar_figure(calendar_df)
-                st.plotly_chart(fig_cal, use_container_width=True)
+            cal_chart = build_calendar_chart(calendar_df)
+            st.altair_chart(cal_chart, use_container_width=True)
 
 
 if __name__ == "__main__":
