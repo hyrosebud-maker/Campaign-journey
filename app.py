@@ -28,30 +28,30 @@ def build_campaign_data():
         ("CMP016", "VIP 전용 선공개 푸시 알림",             "App Push",     "batch", True,  "loyalty",       "loyalty", "CRM"),
         ("CMP017", "생일 축하 쿠폰 이메일",                 "Email",        "batch", True,  "retention",     "loyalty", "CRM"),
         ("CMP018", "급여일 정육 묶음 메타 광고",            "Meta Ads",     "batch", True,  "purchase_intent","common","Paid Media"),
-        ("CMP019", "브랜드 인지도 유튜브 캠페인",           "YouTube",      "batch", True,  "visit",         "common", "Paid Media"),
-        ("CMP020", "브랜드 키워드 구글 검색 광고",          "Google Ads",   "batch", True,  "visit",         "common", "Paid Media"),
-        ("CMP021", "오프라인 매장 오픈 지오 푸시",          "App Push",     "batch", True,  "visit",         "common", "CRM"),
-        ("CMP022", "비 오는 날 따뜻한 음식 추천 푸시",      "App Push",     "event", False, "pdp",           "common", "CRM"),
-        ("CMP023", "점심시간 벤토 인앱 배너",               "In-app Banner","batch", True,  "browse",       "common", "Onsite"),
-        ("CMP024", "야식 시간 푸시 캠페인",                 "App Push",     "event", False, "purchase",      "common", "CRM"),
-        ("CMP025", "레시피 뉴스레터 이메일",                "Email",        "batch", True,  "browse",       "common", "CRM"),
-        ("CMP026", "영수증 기반 회원 전환 SMS",             "SMS",          "batch", True,  "visit",         "common", "CRM"),
-        ("CMP027", "앱 온보딩 튜토리얼 캐러셀",             "In-app Banner","event", False,"visit",         "common", "Onsite"),
+        ("CMP019", "브랜드 인지도 유튜브 캠페인",           "YouTube",      "batch", True,  "visit",         "common","Paid Media"),
+        ("CMP020", "브랜드 키워드 구글 검색 광고",          "Google Ads",   "batch", True,  "visit",         "common","Paid Media"),
+        ("CMP021", "오프라인 매장 오픈 지오 푸시",          "App Push",     "batch", True,  "visit",         "common","CRM"),
+        ("CMP022", "비 오는 날 따뜻한 음식 추천 푸시",      "App Push",     "event", False, "pdp",           "common","CRM"),
+        ("CMP023", "점심시간 벤토 인앱 배너",               "In-app Banner","batch", True,  "browse",       "common","Onsite"),
+        ("CMP024", "야식 시간 푸시 캠페인",                 "App Push",     "event", False, "purchase",      "common","CRM"),
+        ("CMP025", "레시피 뉴스레터 이메일",                "Email",        "batch", True,  "browse",       "common","CRM"),
+        ("CMP026", "영수증 기반 회원 전환 SMS",             "SMS",          "batch", True,  "visit",         "common","CRM"),
+        ("CMP027", "앱 온보딩 튜토리얼 캐러셀",             "In-app Banner","event", False,"visit",         "common","Onsite"),
         ("CMP028", "주말 가족팩 메타 광고",                 "Meta Ads",     "batch", True,  "purchase_intent","common","Paid Media"),
-        ("CMP029", "2시간 한정 플래시 세일 푸시",           "App Push",     "event", False, "purchase",      "common", "CRM"),
-        ("CMP030", "무료 배송 조건 안내 이메일",            "Email",        "event", False, "checkout",      "common", "CRM"),
-        ("CMP031", "관심상품 가격 인하 푸시",               "App Push",     "event", False, "pdp",           "common", "CRM"),
-        ("CMP032", "위시리스트 재입고 알림 이메일",         "Email",        "event", False, "add_to_cart",   "common", "CRM"),
-        ("CMP033", "멤버 전용 화요일 할인 이메일",          "Email",        "batch", True,  "nth_purchase",  "loyalty", "CRM"),
-        ("CMP034", "스캔 앤 고 기능 안내 푸시",             "App Push",     "event", False, "visit",         "common", "CRM"),
-        ("CMP035", "냉동식품 리마케팅 디스플레이 광고",    "Display Ads",  "batch", True,  "browse",       "common", "Paid Media"),
+        ("CMP029", "2시간 한정 플래시 세일 푸시",           "App Push",     "event", False, "purchase",      "common","CRM"),
+        ("CMP030", "무료 배송 조건 안내 이메일",            "Email",        "event", False, "checkout",      "common","CRM"),
+        ("CMP031", "관심상품 가격 인하 푸시",               "App Push",     "event", False, "pdp",           "common","CRM"),
+        ("CMP032", "위시리스트 재입고 알림 이메일",         "Email",        "event", False, "add_to_cart",   "common","CRM"),
+        ("CMP033", "멤버 전용 화요일 할인 이메일",          "Email",        "batch", True,  "nth_purchase",  "loyalty","CRM"),
+        ("CMP034", "스캔 앤 고 기능 안내 푸시",             "App Push",     "event", False, "visit",         "common","CRM"),
+        ("CMP035", "냉동식품 리마케팅 디스플레이 광고",    "Display Ads",  "batch", True,  "browse",       "common","Paid Media"),
         ("CMP036", "결제 단계 디저트 업셀 이메일",          "Email",        "event", False, "checkout",      "loyalty","CRM"),
         ("CMP037", "N번째 구매 스탬프 푸시",                "App Push",     "event", False, "nth_purchase",  "loyalty","CRM"),
         ("CMP038", "정기 구독/리필 리마인더 이메일",        "Email",        "event", False, "nth_purchase",  "loyalty","CRM"),
-        ("CMP039", "180일 휴면 고객 빅쿠폰 이메일",          "Email",        "event", False, "churned",       "churn", "CRM"),
+        ("CMP039", "180일 휴면 고객 빅쿠폰 이메일",          "Email",        "event", False, "churned",       "churn","CRM"),
         ("CMP040", "건강한 식단 프로그램 이메일 시리즈",    "Email",        "batch", True,  "browse",       "common","CRM"),
         ("CMP041", "고가 장바구니 교차판매 이메일",         "Email",        "batch", True,  "loyalty",       "loyalty","CRM"),
-        ("CMP042", "2차 구매 미발생 신규고객 윈백 이메일",  "Email",        "event", False, "churn_risk",    "churn", "CRM"),
+        ("CMP042", "2차 구매 미발생 신규고객 윈백 이메일",  "Email",        "event", False, "churn_risk",    "churn","CRM"),
         ("CMP043", "상위 5% 고객 서프라이즈 기프트 푸시",  "App Push",     "batch", True,  "loyalty",       "loyalty","CRM"),
         ("CMP044", "주말 브런치 카테고리 추천 이메일",      "Email",        "batch", True,  "browse",       "loyalty","CRM"),
         ("CMP045", "연말연시 선물세트 메타 광고",           "Meta Ads",     "batch", True,  "purchase_intent","common","Paid Media"),
@@ -149,20 +149,23 @@ def map_row_to_journey_stage(row):
 # 2. 레이블 행(row) 자동 배정
 # -----------------------------
 
-def assign_label_rows(label_items, base_y=160, char_width=6, row_gap=16):
+def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
     """
     label_items: [{ "x": float, "text": str, "row": <df_row> }, ...]
     -> 각 라벨을 겹치지 않게 행에 배치하고 (item, row_index, y)를 반환
     """
     rows_right_edge = []  # 각 row별 마지막 right x
     placements = []
+    padding = 8           # 양 옆 여백(px)
 
+    # x 기준 왼쪽→오른쪽 정렬
     for item in sorted(label_items, key=lambda d: d["x"]):
         x = float(item["x"])
         text = str(item["text"])
+
         width = len(text) * char_width
-        left = x - width / 2
-        right = x + width / 2
+        left = x - width / 2 - padding
+        right = x + width / 2 + padding
 
         # 사용할 수 있는 row 찾기
         row_idx = 0
@@ -200,7 +203,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     if n <= 1:
         n = 2
 
-    # 기본 좌표 세팅
     width = 2500
     margin_left = 120
     margin_right = 120
@@ -209,7 +211,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     step = (width - margin_left - margin_right) / (n - 1)
     df["x"] = df["story_idx"].apply(lambda i: margin_left + i * step)
 
-    # 스테이지 x 좌표 계산
+    # 스테이지 x 좌표
     stage_x = {}
     for stage in JOURNEY_LINE:
         sub = df[df["journey_stage"] == stage]
@@ -249,7 +251,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         "Display Ads": "#8c564b",
     }
 
-    # --- 레이블 배치 먼저 계산 (height 결정용) ---
+    # --- 레이블 배치 먼저 계산 (height 결정) ---
     label_base_y = baseline_y + 30
     label_items = []
     for _, r in df.iterrows():
@@ -262,17 +264,16 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     placements, max_row, row_gap = assign_label_rows(
         label_items,
         base_y=label_base_y,
-        char_width=6,
-        row_gap=16,
+        char_width=9,
+        row_gap=22,
     )
 
-    # SVG 전체 높이: 라벨 행 수에 맞춰 여유 있게
     height = label_base_y + (max_row + 1) * row_gap + 60
 
     svg = []
     svg.append(f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">')
 
-    # 1) 가로 Legend (상단)
+    # 1) 가로 Legend
     legend_y = 30
     x_cursor = margin_left
     svg.append(
@@ -297,7 +298,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         'stroke="#444" stroke-width="4" />'
     )
 
-    # 3) 스테이지 노드 + 텍스트
+    # 3) 스테이지 박스 + 텍스트
     stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
     for stage in JOURNEY_LINE:
         sx = stage_x[stage]
@@ -313,7 +314,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'font-size="13" fill="#111">{label} ({count}캠페인)</text>'
         )
 
-    # 4) 전 여정 영향 화살표
+    # 4) 전 여정 영향 화살표 (예시)
     arrow_specs = [
         {
             "label": "브랜드 인지도/상단 퍼널 (CMP019, CMP020)",
@@ -359,7 +360,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'font-size="10" fill="{color}">{spec["label"]}</text>'
         )
 
-    # 5) 47개 캠페인 점 + 아래 라벨 (행 배치 결과 사용)
+    # 5) 47개 캠페인 점 + 라벨 (행 배치 결과 사용)
     for item, row_idx, label_y in placements:
         r = item["row"]
         x = float(item["x"])
@@ -375,7 +376,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         )
         svg.append(
             f'<text x="{x}" y="{label_y}" text-anchor="middle" '
-            'font-size="10" fill="#222">'
+            'font-size="9" fill="#222">'
             f'{r["campaign_name"]}</text>'
         )
 
