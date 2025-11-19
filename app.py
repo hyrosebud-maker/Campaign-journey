@@ -216,7 +216,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 
     # 🔧 폭/마진 조정 (왼쪽 정렬)
     width = 1400
-    margin_left = 40
+    margin_left = 0       # ← 왼쪽 여백 제거해서 테이블과 얼라인
     margin_right = 40
     baseline_y = 130
 
@@ -326,6 +326,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         centers.append(stage_x[stage])
         widths.append(len(label) * stage_char_width)
 
+    # 왼쪽->오른쪽
     min_center = x_min + widths[0] / 2 + outer_margin
     centers[0] = max(centers[0], min_center)
     for i in range(1, len(JOURNEY_LINE)):
@@ -333,6 +334,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         if centers[i] < min_center:
             centers[i] = min_center
 
+    # 오른쪽->왼쪽
     max_center = x_max - widths[-1] / 2 - outer_margin
     centers[-1] = min(centers[-1], max_center)
     for i in range(len(JOURNEY_LINE)-2, -1, -1):
@@ -443,7 +445,7 @@ def main():
         st.markdown(f"**마지막 캠페인 동기화 시각:** {ts}")
 
     with st.expander("Raw Campaign List (47개)"):
-        st.dataframe(df)
+        st.dataframe(df, use_container_width=True)
 
     tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
 
@@ -489,7 +491,8 @@ def main():
                     "start_datetime",
                     "end_datetime",
                 ]
-            ]
+            ],
+            use_container_width=True,
         )
 
     # -------- Calendar View --------
@@ -528,7 +531,8 @@ def main():
                     "start_datetime",
                     "end_datetime",
                 ]
-            ]
+            ],
+            use_container_width=True,
         )
 
 
