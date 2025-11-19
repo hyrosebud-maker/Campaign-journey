@@ -146,7 +146,7 @@ def map_row_to_journey_stage(row):
 
 
 # -----------------------------
-# 2. Journey SVG 생성 (1차원 타임라인)
+# 2. Journey SVG 생성 (1차원 타임라인 + 캠페인명 세로 나열)
 # -----------------------------
 
 def build_journey_svg(df: pd.DataFrame) -> str:
@@ -164,21 +164,15 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     df["rank_in_stage"] = df.groupby("journey_stage").cumcount()
     df["count_in_stage"] = df.groupby("journey_stage")["campaign_id"].transform("count")
 
-    def calc_offset(row):
-        n = row["count_in_stage"]
-        r = row["rank_in_stage"]
-        if n <= 1:
-            return 0.0
-        return (r / (n - 1) - 0.5) * 20.0  # -20 ~ +20px
-
-    df["x_offset"] = df.apply(calc_offset, axis=1)
+    max_count = int(df["count_in_stage"].max())
 
     # SVG 사이즈 & 베이스라인
     width = 1200
-    height = 260
     margin_left = 80
     margin_right = 40
-    baseline_y = 140
+    baseline_y = 80  # 여정 라인 위치
+    # 캠페인 라벨들이 아래로 쌓일 높이 확보
+    height = baseline_y + 40 + max_count * 16
 
     n_stage = len(JOURNEY_LINE)
     if n_stage <= 1:
@@ -231,37 +225,46 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'{label} ({count} 캠페인)</text>'
         )
 
-    # 캠페인 점
+    # 캠페인 선 + 점 + 라벨 (모두 라인 아래쪽에 세로로 쌓기)
     for _, row in df.iterrows():
         idx = row["stage_idx"]
-        sx = margin_left + gap * idx + row["x_offset"]
-        sy = baseline_y
+        sx = margin_left + gap * idx
+
+        lane_idx = int(row["rank_in_stage"])  # 0,1,2,...
+        # 각 캠페인 라벨이 아래로 한 줄씩 내려가도록
+        label_y = baseline_y + 25 + lane_idx * 16
+        line_y2 = label_y - 8
+
         color = channel_colors.get(row["channel"], "#666666")
-        title = (
-            f"{row['campaign_name']} / {row['channel']} / "
-            f"{row['campaign_id']} / {row['primary_objective']}"
-        )
+        label_text = row["campaign_name"]
+
+        # 세로선
         svg_parts.append(
-            f'<circle cx="{sx}" cy="{sy}" r="5" fill="{color}">'
-            f'<title>{title}</title></circle>'
+            f'<line x1="{sx}" y1="{baseline_y+7}" x2="{sx}" y2="{line_y2}" '
+            f'stroke="#888" stroke-width="1" />'
+        )
+        # 라인 위의 점 (여정선 상)
+        svg_parts.append(
+            f'<circle cx="{sx}" cy="{baseline_y}" r="4" fill="{color}" />'
+        )
+        # 라벨 텍스트 (작게)
+        svg_parts.append(
+            f'<text x="{sx}" y="{label_y}" text-anchor="middle" font-size="10">{label_text}</text>'
         )
 
-    # 간단 채널 legend
-    legend_x = margin_left
-    legend_y = 30
+    # 간단 채널 legend (왼쪽 상단)
+    legend_x = 20
+    legend_y = 25
     svg_parts.append(f'<text x="{legend_x}" y="{legend_y-10}" font-size="12">채널 Legend</text>')
-    lx = legend_x
+    ly = legend_y
     for ch, color in channel_colors.items():
         svg_parts.append(
-            f'<rect x="{lx}" y="{legend_y}" width="12" height="12" fill="{color}" />'
+            f'<rect x="{legend_x}" y="{ly}" width="12" height="12" fill="{color}" />'
         )
         svg_parts.append(
-            f'<text x="{lx+18}" y="{legend_y+10}" font-size="11">{ch}</text>'
+            f'<text x="{legend_x+18}" y="{ly+10}" font-size="11">{ch}</text>'
         )
-        legend_y += 18
-        if legend_y > 220:  # 너무 길어지면 2열로
-            legend_y = 30
-            lx += 120
+        ly += 18
 
     svg_parts.append("</svg>")
     return "".join(svg_parts)
@@ -308,7 +311,6 @@ def main():
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            # 필터 적용 전 전체 맵
             svg = build_journey_svg(base_df)
             st.markdown(svg, unsafe_allow_html=True)
 
@@ -391,3 +393,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
