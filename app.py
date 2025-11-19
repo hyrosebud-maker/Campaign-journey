@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# -----------------------------
+# ---------------------------------
 # 0. 캠페인 데이터 (47개, 한글명)
-# -----------------------------
+# ---------------------------------
 
 def build_campaign_data():
     base = datetime(2025, 11, 1)
@@ -92,9 +92,9 @@ def build_campaign_data():
     return pd.DataFrame(records)
 
 
-# -----------------------------
+# ---------------------------------
 # 1. Journey 정의 / 매핑
-# -----------------------------
+# ---------------------------------
 
 JOURNEY_LINE = [
     "onboarding",
@@ -109,7 +109,7 @@ JOURNEY_LINE = [
 
 def pretty_stage_name(stage_key: str) -> str:
     mapping = {
-        "onboarding":     "가입 & 온보딩",
+        "onboarding":     "가입",
         "explore":        "탐색",
         "consider":       "고려",
         "first_purchase": "첫 구매",
@@ -145,9 +145,9 @@ def map_row_to_journey_stage(row):
     return None
 
 
-# -----------------------------
-# 2. 레이블 행(row) 자동 배정 (캠페인명)
-# -----------------------------
+# ---------------------------------
+# 2. 라벨 행(row) 자동 배정 (캠페인명)
+# ---------------------------------
 
 def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
     rows_right_edge = []
@@ -177,9 +177,27 @@ def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
     return placements, max_row, row_gap
 
 
-# -----------------------------
+# ---------------------------------
 # 3. Journey SVG 생성
-# -----------------------------
+# ---------------------------------
+
+# 스토리 순서 (1~47) – 1,2,3이 가입 이전에 오도록
+STORY_SEQUENCE = [
+    "CMP019", "CMP020", "CMP026",      # 가입 이전
+    "CMP021", "CMP002", "CMP027", "CMP001", "CMP034",           # 가입 ~ 탐색
+    "CMP003", "CMP025", "CMP040", "CMP023", "CMP035",           # 탐색 ~ 고려
+    "CMP022", "CMP005", "CMP031", "CMP032", "CMP006", "CMP007",
+    "CMP008", "CMP030", "CMP004", "CMP018", "CMP028", "CMP045",
+    "CMP024", "CMP029", "CMP009",                                    # 고려 ~ 첫 구매
+    "CMP010",                                                        # 첫 구매 ~ 구매 후 경험
+    "CMP012", "CMP011", "CMP033", "CMP047", "CMP037", "CMP038",
+    "CMP036", "CMP046",                                             # 구매 후 경험 ~ 재구매
+    "CMP015", "CMP016", "CMP043", "CMP041", "CMP044", "CMP017",     # 재구매 ~ 로열티
+    "CMP042", "CMP013", "CMP014", "CMP039",                         # 로열티 ~ 휴면/재활성화
+]
+
+STORY_INDEX = {cid: i for i, cid in enumerate(STORY_SEQUENCE)}
+PRE_SIGNUP_IDS = {"CMP019", "CMP020", "CMP026"}  # 가입 이전에 위치시킬 캠페인들
 
 def build_journey_svg(df: pd.DataFrame) -> str:
     df = df.copy()
@@ -188,8 +206,8 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     if df.empty:
         return "<p>표시할 여정 캠페인이 없습니다.</p>"
 
-    # CMP001 ~ CMP047 순서 기준으로 x좌표 부여 (스토리라인 순서)
-    df["story_idx"] = df["campaign_id"].str[3:].astype(int) - 1
+    # --- 스토리 순서 기반 x좌표 ---
+    df["story_idx"] = df["campaign_id"].map(STORY_INDEX)
     df = df.sort_values("story_idx").reset_index(drop=True)
 
     n = len(df)
@@ -204,14 +222,18 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     step = (width - margin_left - margin_right) / (n - 1)
     df["x"] = df["story_idx"].apply(lambda i: margin_left + i * step)
 
-    # --- 스테이지 x좌표 (캠페인 분포 기반) ---
+    # --- 스테이지 x좌표 (캠페인 분포 기반, 가입은 PRE_SIGNUP 제외) ---
     stage_x = {}
     for stage in JOURNEY_LINE:
-        sub = df[df["journey_stage"] == stage]
+        if stage == "onboarding":
+            sub = df[(df["journey_stage"] == "onboarding") & (~df["campaign_id"].isin(PRE_SIGNUP_IDS))]
+        else:
+            sub = df[df["journey_stage"] == stage]
+
         if not sub.empty:
             stage_x[stage] = sub["x"].mean()
 
-    # 캠페인이 없는 스테이지는 주변 스테이지 참고해서 보간
+    # 빈 스테이지는 보간
     for i, stage in enumerate(JOURNEY_LINE):
         if stage in stage_x:
             continue
@@ -233,46 +255,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         else:
             stage_x[stage] = margin_left + i * step
 
-    # --- 스테이지 라벨끼리도 겹치지 않도록 x좌표 재조정 ---
-    x_min = df["x"].min()
-    x_max = df["x"].max()
-
-    stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
-
-    stage_char_width = 9
-    stage_gap = 20
-    outer_margin = 10
-
-    centers = []
-    widths = []
-    labels = []
-
-    for stage in JOURNEY_LINE:
-        label = f"{pretty_stage_name(stage)} ({stage_counts.get(stage, 0)}캠페인)"
-        labels.append(label)
-        centers.append(stage_x[stage])
-        widths.append(len(label) * stage_char_width)
-
-    # 왼쪽 -> 오른쪽 패스
-    min_center = x_min + widths[0] / 2 + outer_margin
-    centers[0] = max(centers[0], min_center)
-    for i in range(1, len(JOURNEY_LINE)):
-        min_center = centers[i-1] + (widths[i-1] + widths[i]) / 2 + stage_gap
-        if centers[i] < min_center:
-            centers[i] = min_center
-
-    # 오른쪽 -> 왼쪽 패스
-    max_center = x_max - widths[-1] / 2 - outer_margin
-    centers[-1] = min(centers[-1], max_center)
-    for i in range(len(JOURNEY_LINE)-2, -1, -1):
-        max_center = centers[i+1] - (widths[i+1] + widths[i]) / 2 + (-stage_gap)
-        if centers[i] > max_center:
-            centers[i] = max_center
-
-    # 조정된 center를 stage_x에 반영
-    for idx, stage in enumerate(JOURNEY_LINE):
-        stage_x[stage] = centers[idx]
-
     channel_colors = {
         "Email": "#1f77b4",
         "App Push": "#ff7f0e",
@@ -285,7 +267,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         "Display Ads": "#8c564b",
     }
 
-    # --- 캠페인 라벨 배치 계산 (height 결정) ---
+    # --- 캠페인 라벨 배치 계산 ---
     label_base_y = baseline_y + 30
     label_items = []
     for _, r in df.iterrows():
@@ -302,7 +284,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     svg = []
     svg.append(f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">')
 
-    # 1) 가로 Legend
+    # 1) 채널 Legend (가로)
     legend_y = 30
     x_cursor = margin_left
     svg.append(
@@ -320,31 +302,68 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         x_cursor += legend_x_gap
 
     # 2) 기본 여정 라인
+    x_min = df["x"].min()
+    x_max = df["x"].max()
     svg.append(
         f'<line x1="{x_min}" y1="{baseline_y}" x2="{x_max}" y2="{baseline_y}" '
         'stroke="#444" stroke-width="4" />'
     )
 
-    # 3) 스테이지 박스 + 텍스트 (겹치지 않게 조정된 center 사용)
+    # 3) 스테이지 라벨 (캠페인 수 표시 제거)
+    #    라벨끼리 안 겹치도록 좌표 재조정
+    stage_char_width = 9
+    stage_gap = 20
+    outer_margin = 10
+
+    centers = []
+    widths = []
+    labels = []
+
+    for stage in JOURNEY_LINE:
+        label = pretty_stage_name(stage)
+        labels.append(label)
+        centers.append(stage_x[stage])
+        widths.append(len(label) * stage_char_width)
+
+    # 왼쪽 -> 오른쪽
+    min_center = x_min + widths[0] / 2 + outer_margin
+    centers[0] = max(centers[0], min_center)
+    for i in range(1, len(JOURNEY_LINE)):
+        min_center = centers[i-1] + (widths[i-1] + widths[i]) / 2 + stage_gap
+        if centers[i] < min_center:
+            centers[i] = min_center
+
+    # 오른쪽 -> 왼쪽
+    max_center = x_max - widths[-1] / 2 - outer_margin
+    centers[-1] = min(centers[-1], max_center)
+    for i in range(len(JOURNEY_LINE)-2, -1, -1):
+        max_center = centers[i+1] - (widths[i+1] + widths[i]) / 2 - stage_gap
+        if centers[i] > max_center:
+            centers[i] = max_center
+
+    # 최종 center를 stage_x에 반영
+    for idx, stage in enumerate(JOURNEY_LINE):
+        stage_x[stage] = centers[idx]
+
+    # 스테이지 박스 & 텍스트
     for i, stage in enumerate(JOURNEY_LINE):
         sx = centers[i]
         sy = baseline_y
-        count = stage_counts.get(stage, 0)
         label = pretty_stage_name(stage)
         svg.append(
             f'<rect x="{sx-8}" y="{sy-8}" width="16" height="16" fill="#444" rx="3" />'
         )
         svg.append(
             f'<text x="{sx}" y="{sy-22}" text-anchor="middle" '
-            f'font-size="13" fill="#111">{label} ({count}캠페인)</text>'
+            f'font-size="13" fill="#111">{label}</text>'
         )
 
-    # 4) 전 여정 영향 화살표 (예시)
+    # 4) 전 여정 영향 화살표 예시 (그대로 유지)
     arrow_specs = [
         {
             "label": "브랜드 인지도/상단 퍼널 (CMP019, CMP020)",
             "color": "#7f7fff",
-            "start_stage": "onboarding",
+            "start_stage": "onboarding",   # 가입 전이지만, 시각적으로는 가입 앞 구간에 걸쳐 보임
             "end_stage": "consider",
             "row": 0,
         },
@@ -407,9 +426,9 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     return "".join(svg)
 
 
-# -----------------------------
+# ---------------------------------
 # 4. Streamlit Layout
-# -----------------------------
+# ---------------------------------
 
 def main():
     st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
