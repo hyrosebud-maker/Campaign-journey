@@ -216,7 +216,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 
     # 🔧 폭/마진 조정 (왼쪽 정렬)
     width = 1400
-    margin_left = 0       # 컨테이너 왼쪽으로 최대한 붙이기
+    margin_left = 0       # 컨테이너 왼쪽에 딱 붙게
     margin_right = 40
     baseline_y = 130
 
@@ -283,9 +283,11 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     height = label_base_y + (max_row + 1) * row_gap + 60
 
     svg = []
+    # ★ 여기서 preserveAspectRatio 로 SVG 를 항상 왼쪽 기준(xMin)으로 붙임
     svg.append(
         f'<svg width="100%" height="{height}" '
-        f'viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">'
+        f'viewBox="0 0 {width} {height}" preserveAspectRatio="xMinYMin meet" '
+        f'xmlns="http://www.w3.org/2000/svg">'
     )
 
     # 1) 채널 Legend
@@ -352,6 +354,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         svg.append(
             f'<rect x="{sx-8}" y="{sy-8}" width="16" height="16" fill="#444" rx="3" />'
         )
+    #
         svg.append(
             f'<text x="{sx}" y="{sy-22}" text-anchor="middle" '
             f'font-size="13" fill="#111">{label}</text>'
@@ -432,7 +435,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 def main():
     st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
 
-    # 🔧 컨테이너 좌우 padding 제거 → SVG와 테이블 완전 왼쪽 정렬
+    # 컨테이너 좌우 padding 최소화
     st.markdown(
         """
         <style>
