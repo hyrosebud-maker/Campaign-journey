@@ -148,9 +148,6 @@ def map_row_to_journey_stage(row):
 
 # -----------------------------
 # 2. Journey SVG 생성
-#    - 47개 캠페인 전부 타임라인 위에 점
-#    - 각 점에서 아래로 라벨
-#    - Legend 가로 배치
 # -----------------------------
 
 def build_journey_svg(df: pd.DataFrame) -> str:
@@ -160,36 +157,32 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     if df.empty:
         return "<p>표시할 여정 캠페인이 없습니다.</p>"
 
-    # 스토리 순서: CMP001 ~ CMP047
+    # CMP001 ~ CMP047 순서
     df["story_idx"] = df["campaign_id"].str[3:].astype(int) - 1
     df = df.sort_values("story_idx").reset_index(drop=True)
 
     n = len(df)
     if n <= 1:
-        n = 2  # 나눗셈 방지
+        n = 2
 
-    # SVG 레이아웃 (가로를 넓게)
     width = 2500
     margin_left = 120
     margin_right = 120
-    baseline_y = 130  # 여정 라인
-    height = 900      # 충분히 길게 (47개 라벨)
+    baseline_y = 130
+    height = 900
 
     step = (width - margin_left - margin_right) / (n - 1)
-
     df["x"] = df["story_idx"].apply(lambda i: margin_left + i * step)
 
-    # 스테이지 위치: 해당 스테이지에 속한 캠페인 x 평균값
+    # 스테이지 위치 (해당 스테이지 캠페인 x 평균)
     stage_x = {}
     for stage in JOURNEY_LINE:
         sub = df[df["journey_stage"] == stage]
         if not sub.empty:
             stage_x[stage] = sub["x"].mean()
-    # 비어있는 스테이지는 앞/뒤 보간
     for i, stage in enumerate(JOURNEY_LINE):
         if stage in stage_x:
             continue
-        # 왼쪽/오른쪽에서 가까운 값 찾기
         left = None
         right = None
         for j in range(i-1, -1, -1):
@@ -209,7 +202,6 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         else:
             stage_x[stage] = margin_left + i * step
 
-    # 채널 색상
     channel_colors = {
         "Email": "#1f77b4",
         "App Push": "#ff7f0e",
@@ -225,12 +217,11 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     svg = []
     svg.append(f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">')
 
-    # 2-1. 가로 Legend (상단)
+    # 가로 Legend
     legend_y = 30
     x_cursor = margin_left
     svg.append(
-        f'<text x="{margin_left}" y="{legend_y-12}" font-size="12" fill="#111">'
-        f'채널 Legend</text>'
+        f'<text x="{margin_left}" y="{legend_y-12}" font-size="12" fill="#111">채널 Legend</text>'
     )
     x_cursor += 90
     legend_x_gap = 120
@@ -243,7 +234,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         )
         x_cursor += legend_x_gap
 
-    # 2-2. 여정 라인
+    # 여정 라인
     x_min = df["x"].min()
     x_max = df["x"].max()
     svg.append(
@@ -251,7 +242,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         'stroke="#444" stroke-width="4" />'
     )
 
-    # 2-3. 스테이지 노드 + 텍스트
+    # 스테이지 노드 + 텍스트
     stage_counts = df.groupby("journey_stage")["campaign_id"].nunique().to_dict()
     for stage in JOURNEY_LINE:
         sx = stage_x[stage]
@@ -267,7 +258,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'font-size="13" fill="#111">{label} ({count}캠페인)</text>'
         )
 
-    # 2-4. 전 여정 영향 화살표들 (여정 라인 위)
+    # 전 여정 영향 화살표
     arrow_specs = [
         {
             "label": "브랜드 인지도/상단 퍼널 (CMP019, CMP020)",
@@ -313,8 +304,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'font-size="10" fill="{color}">{spec["label"]}</text>'
         )
 
-    # 2-5. 47개 캠페인 점 + 아래 라벨
-    # story_idx를 그대로 사용해서 세로 위치를 조금씩 달리함
+    # 47개 캠페인 점 + 아래 라벨
     label_base_y = baseline_y + 30
     label_gap = 14
     for _, row in df.iterrows():
@@ -325,16 +315,13 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         label_y = label_base_y + story_idx * label_gap
         line_y2 = label_y - 6
 
-        # 세로선
         svg.append(
             f'<line x1="{x}" y1="{baseline_y+8}" x2="{x}" y2="{line_y2}" '
             'stroke="#bbbbbb" stroke-width="1" />'
         )
-        # 여정 라인 상의 점
         svg.append(
             f'<circle cx="{x}" cy="{baseline_y}" r="4" fill="{color}" />'
         )
-        # 한국어 캠페인명
         svg.append(
             f'<text x="{x}" y="{label_y}" text-anchor="middle" '
             'font-size="10" fill="#222">'
@@ -353,22 +340,18 @@ def main():
     st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
     st.title("A사 마케팅 캠페인 Journey MAP")
 
-    if "campaign_df" not in st.session_state:
-        st.session_state["campaign_df"] = build_campaign_data()
-        st.session_state["last_updated"] = datetime.now()
+    # 매번 새로 생성 (세션 캐시 X)
+    df = build_campaign_data()
+    last_updated = datetime.now()
 
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
-        if st.button("캠페인 가져오기 (API 호출)"):
-            st.session_state["campaign_df"] = build_campaign_data()
-            st.session_state["last_updated"] = datetime.now()
-            st.success("캠페인 메타데이터를 최신 상태로 갱신했습니다.")
+        if st.button("캠페인 가져오기 (API 호출)", help="데모용: 현재는 고정 데이터 사용"):
+            st.success("데모용 고정 데이터 기준으로 캠페인 정보를 불러왔습니다.")
 
     with col_info:
-        ts = st.session_state["last_updated"].strftime("%Y-%m-%d %H:%M:%S")
+        ts = last_updated.strftime("%Y-%m-%d %H:%M:%S")
         st.markdown(f"**마지막 캠페인 동기화 시각:** {ts}")
-
-    df = st.session_state["campaign_df"]
 
     with st.expander("Raw Campaign List (47개)"):
         st.dataframe(df)
@@ -402,7 +385,6 @@ def main():
         ].copy()
 
         svg = build_journey_svg(filtered)
-        # 가로가 길어서 세로 스크롤만 나오게 container_width=True
         st.markdown(svg, unsafe_allow_html=True)
 
         st.markdown("### 선택된 캠페인 목록")
