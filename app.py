@@ -1,10 +1,9 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
 from datetime import datetime, timedelta
 
 # ---------------------------------
-# 0. 캠페인 데이터 (47개, 한글명)
+# 0. 캠페인 데이터 (47개, 한글)
 # ---------------------------------
 
 def build_campaign_data():
@@ -147,7 +146,7 @@ def map_row_to_journey_stage(row):
 
 
 # ---------------------------------
-# 2. 라벨 행(row) 자동 배정 (캠페인명)
+# 2. 라벨 위치 계산 (캠페인명)
 # ---------------------------------
 
 def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
@@ -164,7 +163,7 @@ def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
 
         row_idx = 0
         while row_idx < len(rows_right_edge) and left <= rows_right_edge[row_idx]:
-       	    row_idx += 1
+            row_idx += 1
 
         if row_idx == len(rows_right_edge):
             rows_right_edge.append(right)
@@ -223,7 +222,7 @@ def build_journey_svg(df: pd.DataFrame):
     step = (width - margin_left - margin_right) / (n - 1)
     df["x"] = df["story_idx"].apply(lambda i: margin_left + i * step)
 
-    # --- 스테이지 x좌표 (캠페인 분포 기반, 가입은 PRE_SIGNUP 제외) ---
+    # --- 스테이지 x좌표 (가입 스테이지는 PRE_SIGNUP 제외) ---
     stage_x = {}
     for stage in JOURNEY_LINE:
         if stage == "onboarding":
@@ -429,12 +428,35 @@ def build_journey_svg(df: pd.DataFrame):
 def main():
     st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
 
+    # 전체 패딩 및 버튼 스타일
     st.markdown(
         """
         <style>
         .block-container {
             padding-left: 0rem !important;
             padding-right: 0rem !important;
+        }
+        /* 메인 버튼 (st.button) */
+        div[data-testid="stButton"] > button {
+            background-color: #ff7f0e;
+            color: white;
+            font-weight: 700;
+            padding: 0.55rem 1.6rem;
+            font-size: 0.95rem;
+            border-radius: 6px;
+        }
+        /* 링크 버튼 (Salesforce / Adobe Target) */
+        a[data-testid="stLinkButton"] {
+            font-size: 0.75rem;
+            color: #888888 !important;
+            border: 1px solid #dddddd;
+            padding: 0.2rem 0.8rem;
+            border-radius: 999px;
+            background-color: #f9f9f9;
+        }
+        a[data-testid="stLinkButton"]:hover {
+            background-color: #f0f0f0;
+            color: #666666 !important;
         }
         </style>
         """,
@@ -448,13 +470,23 @@ def main():
 
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
-        if st.button("캠페인 가져오기 (API 호출)", help="데모용: 현재는 고정 데이터 사용"):
-            st.success("데모용 고정 데이터 기준으로 캠페인 정보를 불러왔습니다.")
+        clicked = st.button("캠페인 정보 가져오기")
+        st.write("")  # 간격
+        sf_col, ad_col = st.columns(2)
+        with sf_col:
+            st.link_button("Salesforce", "#", help="Salesforce 캠페인 메타데이터 기준")
+        with ad_col:
+            st.link_button("Adobe Target", "#", help="Adobe Target 캠페인 메타데이터 기준")
+
     with col_info:
         ts = last_updated.strftime("%Y-%m-%d %H:%M:%S")
         st.markdown(f"**마지막 캠페인 동기화 시각:** {ts}")
 
-    with st.expander("Raw Campaign List (47개)"):
+    if clicked:
+        st.success("데모용 고정 데이터 기준으로 캠페인 정보를 불러왔습니다.")
+
+    # 👉 Raw Campaign이 기본으로 열려 있도록 expanded=True
+    with st.expander("Raw Campaign List (47개)", expanded=True):
         st.dataframe(df, use_container_width=True)
 
     tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
@@ -487,15 +519,14 @@ def main():
 
         svg, svg_height = build_journey_svg(filtered)
 
-        # ❗ 여기서 왼쪽 얼라인을 강제로 맞춤 (DataFrame 시작 위치에 맞춰 -24px 정도 당김)
-        components.html(
+        # iframe 없이 바로 SVG 렌더 → DataFrame 과 같은 컬럼 폭 내에서 좌측 정렬
+        st.markdown(
             f"""
-            <div style="margin-left:-24px; margin-right:0; padding:0;">
+            <div style="margin:0; padding:0;">
                 {svg}
             </div>
             """,
-            height=svg_height + 30,
-            scrolling=False,
+            unsafe_allow_html=True,
         )
 
         st.markdown("### 선택된 캠페인 목록")
