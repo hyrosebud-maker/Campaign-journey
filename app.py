@@ -1,204 +1,3 @@
-import streamlit as st
-import pandas as pd
-from datetime import datetime, timedelta
-
-# ---------------------------------
-# 0. 캠페인 데이터 (47개, 한글명)
-# ---------------------------------
-
-def build_campaign_data():
-    base = datetime(2025, 11, 1)
-
-    raw = [
-        ("CMP001", "회원가입 환영 이메일 시리즈",           "Email",        "event", False, "visit",          "common",  "CRM"),
-        ("CMP002", "신규 앱 설치 푸시 알림",               "App Push",     "event", False, "visit",          "common",  "CRM"),
-        ("CMP003", "주간 디지털 전단지 이메일",             "Email",        "batch", True,  "browse",        "common",  "CRM"),
-        ("CMP004", "급여일 할인 프로모션 SMS",              "SMS",          "batch", True,  "purchase_intent","common", "CRM"),
-        ("CMP005", "신선식품 가격 인하 푸시 알림",         "App Push",     "event", False, "pdp",            "common", "CRM"),
-        ("CMP006", "장바구니 이탈 리마인드 이메일",         "Email",        "event", False, "add_to_cart",   "common",  "CRM"),
-        ("CMP007", "장바구니 이탈 카카오톡 알림",           "KakaoTalk",    "event", False, "add_to_cart",   "common",  "CRM"),
-        ("CMP008", "결제 이탈 리마인드 이메일",             "Email",        "event", False, "checkout",      "common",  "CRM"),
-        ("CMP009", "첫 구매 쿠폰 제공 이메일",              "Email",        "event", False, "purchase",      "common",  "CRM"),
-        ("CMP010", "상품 리뷰 작성 요청 이메일",            "Email",        "event", False, "retention",     "common",  "CRM"),
-        ("CMP011", "밀키트 교차판매 추천 이메일",           "Email",        "batch", True,  "nth_purchase",  "loyalty", "CRM"),
-        ("CMP012", "생필품 재구매 푸시 알림",               "App Push",     "event", False, "nth_purchase",  "loyalty", "CRM"),
-        ("CMP013", "30일 비활성 고객 윈백 이메일",          "Email",        "event", False, "churn_risk",    "churn",   "CRM"),
-        ("CMP014", "60일 비활성 고객 카카오 윈백",          "KakaoTalk",    "event", False, "churn_risk",    "churn",   "CRM"),
-        ("CMP015", "VIP 등급 승급 안내 이메일",             "Email",        "event", False, "loyalty",       "loyalty", "CRM"),
-        ("CMP016", "VIP 전용 선공개 푸시 알림",             "App Push",     "batch", True,  "loyalty",       "loyalty", "CRM"),
-        ("CMP017", "생일 축하 쿠폰 이메일",                 "Email",        "batch", True,  "retention",     "loyalty", "CRM"),
-        ("CMP018", "급여일 정육 묶음 메타 광고",            "Meta Ads",     "batch", True,  "purchase_intent","common","Paid Media"),
-        ("CMP019", "브랜드 인지도 유튜브 캠페인",           "YouTube",      "batch", True,  "visit",         "common","Paid Media"),
-        ("CMP020", "브랜드 키워드 구글 검색 광고",          "Google Ads",   "batch", True,  "visit",         "common","Paid Media"),
-        ("CMP021", "오프라인 매장 오픈 지오 푸시",          "App Push",     "batch", True,  "visit",         "common","CRM"),
-        ("CMP022", "비 오는 날 따뜻한 음식 추천 푸시",      "App Push",     "event", False, "pdp",           "common","CRM"),
-        ("CMP023", "점심시간 벤토 인앱 배너",               "In-app Banner","batch", True,  "browse",       "common","Onsite"),
-        ("CMP024", "야식 시간 푸시 캠페인",                 "App Push",     "event", False, "purchase",      "common","CRM"),
-        ("CMP025", "레시피 뉴스레터 이메일",                "Email",        "batch", True,  "browse",       "common","CRM"),
-        ("CMP026", "영수증 기반 회원 전환 SMS",             "SMS",          "batch", True,  "visit",         "common","CRM"),
-        ("CMP027", "앱 온보딩 튜토리얼 캐러셀",             "In-app Banner","event", False,"visit",         "common","Onsite"),
-        ("CMP028", "주말 가족팩 메타 광고",                 "Meta Ads",     "batch", True,  "purchase_intent","common","Paid Media"),
-        ("CMP029", "2시간 한정 플래시 세일 푸시",           "App Push",     "event", False, "purchase",      "common","CRM"),
-        ("CMP030", "무료 배송 조건 안내 이메일",            "Email",        "event", False, "checkout",      "common","CRM"),
-        ("CMP031", "관심상품 가격 인하 푸시",               "App Push",     "event", False, "pdp",           "common","CRM"),
-        ("CMP032", "위시리스트 재입고 알림 이메일",         "Email",        "event", False, "add_to_cart",   "common","CRM"),
-        ("CMP033", "멤버 전용 화요일 할인 이메일",          "Email",        "batch", True,  "nth_purchase",  "loyalty","CRM"),
-        ("CMP034", "스캔 앤 고 기능 안내 푸시",             "App Push",     "event", False, "visit",         "common","CRM"),
-        ("CMP035", "냉동식품 리마케팅 디스플레이 광고",    "Display Ads",  "batch", True,  "browse",       "common","Paid Media"),
-        ("CMP036", "결제 단계 디저트 업셀 이메일",          "Email",        "event", False, "checkout",      "loyalty","CRM"),
-        ("CMP037", "N번째 구매 스탬프 푸시",                "App Push",     "event", False, "nth_purchase",  "loyalty","CRM"),
-        ("CMP038", "정기 구독/리필 리마인더 이메일",        "Email",        "event", False, "nth_purchase",  "loyalty","CRM"),
-        ("CMP039", "180일 휴면 고객 빅쿠폰 이메일",          "Email",        "event", False, "churned",       "churn","CRM"),
-        ("CMP040", "건강한 식단 프로그램 이메일 시리즈",    "Email",        "batch", True,  "browse",       "common","CRM"),
-        ("CMP041", "고가 장바구니 교차판매 이메일",         "Email",        "batch", True,  "loyalty",       "loyalty","CRM"),
-        ("CMP042", "2차 구매 미발생 신규고객 윈백 이메일",  "Email",        "event", False, "churn_risk",    "churn","CRM"),
-        ("CMP043", "상위 5% 고객 서프라이즈 기프트 푸시",  "App Push",     "batch", True,  "loyalty",       "loyalty","CRM"),
-        ("CMP044", "주말 브런치 카테고리 추천 이메일",      "Email",        "batch", True,  "browse",       "loyalty","CRM"),
-        ("CMP045", "연말연시 선물세트 메타 광고",           "Meta Ads",     "batch", True,  "purchase_intent","common","Paid Media"),
-        ("CMP046", "저RFM 고객 업셀 카카오톡",              "KakaoTalk",    "batch", True,  "nth_purchase",  "loyalty","CRM"),
-        ("CMP047", "2+1 묶음 프로모션 이메일",              "Email",        "batch", True,  "nth_purchase",  "loyalty","CRM"),
-    ]
-
-    records = []
-    for idx, row in enumerate(raw):
-        cid, name, channel, trigger, is_batch, obj, branch, ctype = row
-        start = base + timedelta(days=idx)
-        end = start + timedelta(days=7 if is_batch else 1)
-
-        if trigger == "event" and obj in [
-            "visit","browse","pdp","add_to_cart","checkout","purchase",
-            "retention","nth_purchase","churn_risk","churned","loyalty"
-        ]:
-            journey = True
-        else:
-            journey = False
-
-        view_assignment = "Both" if (journey and is_batch) else ("Journey" if journey else "Calendar")
-
-        records.append({
-            "campaign_id": cid,
-            "campaign_name": name,
-            "channel": channel,
-            "trigger_type": trigger,
-            "is_batch_campaign": is_batch,
-            "primary_objective": obj,
-            "journey_branch": branch,
-            "campaign_type": ctype,
-            "start_datetime": start,
-            "end_datetime": end,
-            "view_assignment": view_assignment,
-        })
-
-    return pd.DataFrame(records)
-
-
-# ---------------------------------
-# 1. Journey 정의 / 매핑
-# ---------------------------------
-
-JOURNEY_LINE = [
-    "onboarding",
-    "explore",
-    "consider",
-    "first_purchase",
-    "post_purchase",
-    "repeat",
-    "loyalty",
-    "reactivation",
-]
-
-def pretty_stage_name(stage_key: str) -> str:
-    mapping = {
-        "onboarding":     "가입",
-        "explore":        "탐색",
-        "consider":       "고려",
-        "first_purchase": "첫 구매",
-        "post_purchase":  "구매 후 경험",
-        "repeat":         "재구매 (N차)",
-        "loyalty":        "로열티",
-        "reactivation":   "휴면/재활성화",
-    }
-    return mapping.get(stage_key, stage_key)
-
-def map_row_to_journey_stage(row):
-    obj = row["primary_objective"]
-    branch = row["journey_branch"]
-
-    if obj == "visit":
-        return "onboarding"
-    if obj == "browse":
-        return "explore"
-    if obj == "pdp":
-        return "consider"
-    if obj in ["add_to_cart", "checkout", "purchase"]:
-        return "repeat" if branch == "loyalty" else "first_purchase"
-    if obj == "retention":
-        return "post_purchase"
-    if obj == "nth_purchase":
-        return "repeat"
-    if obj == "loyalty":
-        return "loyalty"
-    if obj in ["churn_risk", "churned"]:
-        return "reactivation"
-    if obj == "purchase_intent":
-        return "consider"
-    return None
-
-
-# ---------------------------------
-# 2. 라벨 행(row) 자동 배정 (캠페인명)
-# ---------------------------------
-
-def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
-    rows_right_edge = []
-    placements = []
-    padding = 8
-
-    for item in sorted(label_items, key=lambda d: d["x"]):
-        x = float(item["x"])
-        text = str(item["text"])
-        width = len(text) * char_width
-        left = x - width / 2 - padding
-        right = x + width / 2 + padding
-
-        row_idx = 0
-        while row_idx < len(rows_right_edge) and left <= rows_right_edge[row_idx]:
-            row_idx += 1
-
-        if row_idx == len(rows_right_edge):
-            rows_right_edge.append(right)
-        else:
-            rows_right_edge[row_idx] = right
-
-        y = base_y + row_idx * row_gap
-        placements.append((item, row_idx, y))
-
-    max_row = len(rows_right_edge) - 1 if rows_right_edge else 0
-    return placements, max_row, row_gap
-
-
-# ---------------------------------
-# 3. Journey SVG 생성
-# ---------------------------------
-
-# 스토리 순서 (1~47) – 1,2,3이 가입 이전에 오도록
-STORY_SEQUENCE = [
-    "CMP019", "CMP020", "CMP026",      # 가입 이전
-    "CMP021", "CMP002", "CMP027", "CMP001", "CMP034",           # 가입 ~ 탐색
-    "CMP003", "CMP025", "CMP040", "CMP023", "CMP035",           # 탐색 ~ 고려
-    "CMP022", "CMP005", "CMP031", "CMP032", "CMP006", "CMP007",
-    "CMP008", "CMP030", "CMP004", "CMP018", "CMP028", "CMP045",
-    "CMP024", "CMP029", "CMP009",                                    # 고려 ~ 첫 구매
-    "CMP010",                                                        # 첫 구매 ~ 구매 후 경험
-    "CMP012", "CMP011", "CMP033", "CMP047", "CMP037", "CMP038",
-    "CMP036", "CMP046",                                             # 구매 후 경험 ~ 재구매
-    "CMP015", "CMP016", "CMP043", "CMP041", "CMP044", "CMP017",     # 재구매 ~ 로열티
-    "CMP042", "CMP013", "CMP014", "CMP039",                         # 로열티 ~ 휴면/재활성화
-]
-
-STORY_INDEX = {cid: i for i, cid in enumerate(STORY_SEQUENCE)}
-PRE_SIGNUP_IDS = {"CMP019", "CMP020", "CMP026"}  # 가입 이전에 위치시킬 캠페인들
-
 def build_journey_svg(df: pd.DataFrame) -> str:
     df = df.copy()
     df["journey_stage"] = df.apply(map_row_to_journey_stage, axis=1)
@@ -214,9 +13,10 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     if n <= 1:
         n = 2
 
-    width = 2500
-    margin_left = 120
-    margin_right = 120
+    # 🔧 폭/마진 조정 (왼쪽 정렬)
+    width = 1400          # 이전: 2500
+    margin_left = 40      # 이전: 120
+    margin_right = 40     # 이전: 120
     baseline_y = 130
 
     step = (width - margin_left - margin_right) / (n - 1)
@@ -282,7 +82,11 @@ def build_journey_svg(df: pd.DataFrame) -> str:
     height = label_base_y + (max_row + 1) * row_gap + 60
 
     svg = []
-    svg.append(f'<svg width="{width}" height="{height}" xmlns="http://www.w3.org/2000/svg">')
+    # 🔧 컨테이너 폭에 맞게, 왼쪽 정렬
+    svg.append(
+        f'<svg width="100%" height="{height}" '
+        f'viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">'
+    )
 
     # 1) 채널 Legend (가로)
     legend_y = 30
@@ -309,8 +113,7 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         'stroke="#444" stroke-width="4" />'
     )
 
-    # 3) 스테이지 라벨 (캠페인 수 표시 제거)
-    #    라벨끼리 안 겹치도록 좌표 재조정
+    # 3) 스테이지 라벨 (겹침 방지 로직 포함)
     stage_char_width = 9
     stage_gap = 20
     outer_margin = 10
@@ -341,11 +144,9 @@ def build_journey_svg(df: pd.DataFrame) -> str:
         if centers[i] > max_center:
             centers[i] = max_center
 
-    # 최종 center를 stage_x에 반영
     for idx, stage in enumerate(JOURNEY_LINE):
         stage_x[stage] = centers[idx]
 
-    # 스테이지 박스 & 텍스트
     for i, stage in enumerate(JOURNEY_LINE):
         sx = centers[i]
         sy = baseline_y
@@ -358,12 +159,12 @@ def build_journey_svg(df: pd.DataFrame) -> str:
             f'font-size="13" fill="#111">{label}</text>'
         )
 
-    # 4) 전 여정 영향 화살표 예시 (그대로 유지)
+    # 4) 전 여정 영향 화살표 (기존 그대로)
     arrow_specs = [
         {
             "label": "브랜드 인지도/상단 퍼널 (CMP019, CMP020)",
             "color": "#7f7fff",
-            "start_stage": "onboarding",   # 가입 전이지만, 시각적으로는 가입 앞 구간에 걸쳐 보임
+            "start_stage": "onboarding",
             "end_stage": "consider",
             "row": 0,
         },
@@ -424,117 +225,3 @@ def build_journey_svg(df: pd.DataFrame) -> str:
 
     svg.append("</svg>")
     return "".join(svg)
-
-
-# ---------------------------------
-# 4. Streamlit Layout
-# ---------------------------------
-
-def main():
-    st.set_page_config(page_title="A사 마케팅 캠페인 Journey MAP", layout="wide")
-    st.title("A사 마케팅 캠페인 Journey MAP")
-
-    df = build_campaign_data()
-    last_updated = datetime.now()
-
-    col_btn, col_info = st.columns([1, 3])
-    with col_btn:
-        if st.button("캠페인 가져오기 (API 호출)", help="데모용: 현재는 고정 데이터 사용"):
-            st.success("데모용 고정 데이터 기준으로 캠페인 정보를 불러왔습니다.")
-    with col_info:
-        ts = last_updated.strftime("%Y-%m-%d %H:%M:%S")
-        st.markdown(f"**마지막 캠페인 동기화 시각:** {ts}")
-
-    with st.expander("Raw Campaign List (47개)"):
-        st.dataframe(df)
-
-    tab1, tab2 = st.tabs(["🧭 Journey View", "📅 Calendar View"])
-
-    # -------- Journey View --------
-    with tab1:
-        st.subheader("고객 여정 기반 캠페인 맵")
-
-        base_df = df[df["view_assignment"].isin(["Journey", "Both"])].copy()
-
-        with st.expander("필터"):
-            channel_filter = st.multiselect(
-                "채널 선택",
-                sorted(base_df["channel"].unique()),
-                default=sorted(base_df["channel"].unique()),
-                key="channel_filter_journey",
-            )
-            branch_filter = st.multiselect(
-                "브랜치 선택",
-                ["common", "churn", "loyalty"],
-                default=["common", "churn", "loyalty"],
-                format_func=lambda x: {"common": "공통", "churn": "이탈", "loyalty": "충성"}[x],
-                key="branch_filter_journey",
-            )
-
-        filtered = base_df[
-            (base_df["channel"].isin(channel_filter))
-            & (base_df["journey_branch"].isin(branch_filter))
-        ].copy()
-
-        svg = build_journey_svg(filtered)
-        st.markdown(svg, unsafe_allow_html=True)
-
-        st.markdown("### 선택된 캠페인 목록")
-        st.dataframe(
-            filtered[
-                [
-                    "campaign_id",
-                    "campaign_name",
-                    "channel",
-                    "primary_objective",
-                    "journey_branch",
-                    "is_batch_campaign",
-                    "start_datetime",
-                    "end_datetime",
-                ]
-            ]
-        )
-
-    # -------- Calendar View --------
-    with tab2:
-        st.subheader("배치성 마케팅 캘린더 (테이블)")
-
-        channel_filter_cal = st.multiselect(
-            "채널 선택",
-            sorted(df["channel"].unique()),
-            default=sorted(df["channel"].unique()),
-            key="channel_filter_calendar",
-        )
-        branch_filter_cal = st.multiselect(
-            "브랜치 선택",
-            ["common", "churn", "loyalty"],
-            default=["common", "churn", "loyalty"],
-            format_func=lambda x: {"common": "공통", "churn": "이탈", "loyalty": "충성"}[x],
-            key="branch_filter_calendar",
-        )
-
-        calendar_df = df[
-            (df["is_batch_campaign"])
-            & (df["channel"].isin(channel_filter_cal))
-            & (df["journey_branch"].isin(branch_filter_cal))
-        ].copy()
-
-        st.markdown("### 배치성 캠페인 목록")
-        st.dataframe(
-            calendar_df[
-                [
-                    "campaign_id",
-                    "campaign_name",
-                    "channel",
-                    "primary_objective",
-                    "journey_branch",
-                    "start_datetime",
-                    "end_datetime",
-                ]
-            ]
-        )
-
-
-if __name__ == "__main__":
-    main()
-
