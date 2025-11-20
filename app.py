@@ -91,7 +91,6 @@ def build_campaign_data():
 
     return pd.DataFrame(records)
 
-
 # ---------------------------------
 # 1. Journey 정의 / 매핑
 # ---------------------------------
@@ -144,7 +143,6 @@ def map_row_to_journey_stage(row):
         return "consider"
     return None
 
-
 # ---------------------------------
 # 2. 라벨 위치 계산 (캠페인명)
 # ---------------------------------
@@ -176,7 +174,6 @@ def assign_label_rows(label_items, base_y=160, char_width=9, row_gap=22):
     max_row = len(rows_right_edge) - 1 if rows_right_edge else 0
     return placements, max_row, row_gap
 
-
 # ---------------------------------
 # 3. Journey SVG 생성
 # ---------------------------------
@@ -198,7 +195,6 @@ STORY_SEQUENCE = [
 STORY_INDEX = {cid: i for i, cid in enumerate(STORY_SEQUENCE)}
 PRE_SIGNUP_IDS = {"CMP019", "CMP020", "CMP026"}
 
-
 def build_journey_svg(df: pd.DataFrame):
     df = df.copy()
     df["journey_stage"] = df.apply(map_row_to_journey_stage, axis=1)
@@ -206,7 +202,6 @@ def build_journey_svg(df: pd.DataFrame):
     if df.empty:
         return "<p>표시할 여정 캠페인이 없습니다.</p>", 120
 
-    # --- 스토리 순서 기반 x좌표 ---
     df["story_idx"] = df["campaign_id"].map(STORY_INDEX)
     df = df.sort_values("story_idx").reset_index(drop=True)
 
@@ -215,14 +210,14 @@ def build_journey_svg(df: pd.DataFrame):
         n = 2
 
     width = 1400
-    margin_left = 40
+    margin_left = 0   # ← 왼쪽 여백 제거해서 표와 얼라인
     margin_right = 40
     baseline_y = 130
 
     step = (width - margin_left - margin_right) / (n - 1)
     df["x"] = df["story_idx"].apply(lambda i: margin_left + i * step)
 
-    # --- 스테이지 x좌표 (가입 스테이지는 PRE_SIGNUP 제외) ---
+    # 스테이지 위치
     stage_x = {}
     for stage in JOURNEY_LINE:
         if stage == "onboarding":
@@ -255,15 +250,15 @@ def build_journey_svg(df: pd.DataFrame):
             stage_x[stage] = margin_left + i * step
 
     channel_colors = {
-        "Email": "#1f77b4",
-        "App Push": "#ff7f0e",
+        "Email": "#5b8def",
+        "App Push": "#ff9f43",
         "KakaoTalk": "#ffcc00",
-        "SMS": "#2ca02c",
-        "Meta Ads": "#d62728",
-        "YouTube": "#c61c29",
-        "Google Ads": "#17becf",
-        "In-app Banner": "#9467bd",
-        "Display Ads": "#8c564b",
+        "SMS": "#2ecc71",
+        "Meta Ads": "#e74c3c",
+        "YouTube": "#c0392b",
+        "Google Ads": "#1abc9c",
+        "In-app Banner": "#9b59b6",
+        "Display Ads": "#8e44ad",
     }
 
     label_base_y = baseline_y + 30
@@ -420,7 +415,6 @@ def build_journey_svg(df: pd.DataFrame):
     svg.append("</svg>")
     return "".join(svg), height
 
-
 # ---------------------------------
 # 4. Streamlit Layout
 # ---------------------------------
@@ -436,27 +430,35 @@ def main():
             padding-left: 0rem !important;
             padding-right: 0rem !important;
         }
-        /* 메인 버튼 (st.button) */
+        /* 메인 버튼 (캠페인 정보 가져오기) */
         div[data-testid="stButton"] > button {
-            background-color: #ff7f0e;
-            color: white;
+            background: linear-gradient(90deg, #7b3ff3, #b37dff);
+            color: #ffffff;
             font-weight: 700;
-            padding: 0.55rem 1.6rem;
+            padding: 0.55rem 1.8rem;
             font-size: 0.95rem;
-            border-radius: 6px;
-        }
-        /* 링크 버튼 (Salesforce / Adobe Target) */
-        a[data-testid="stLinkButton"] {
-            font-size: 0.75rem;
-            color: #888888 !important;
-            border: 1px solid #dddddd;
-            padding: 0.2rem 0.8rem;
             border-radius: 999px;
-            background-color: #f9f9f9;
+            border: none;
+            box-shadow: 0 4px 10px rgba(123,63,243,0.25);
         }
-        a[data-testid="stLinkButton"]:hover {
+        div[data-testid="stButton"] > button:hover {
+            filter: brightness(1.05);
+        }
+        /* Salesforce / Adobe Target 작은 pill */
+        .source-pill {
+            display: inline-block;
+            padding: 0.15rem 0.7rem;
+            margin-right: 0.3rem;
+            border-radius: 999px;
+            border: 1px solid #dedede;
+            background-color: #f8f8f8;
+            font-size: 0.72rem;
+            color: #999999;
+            text-decoration: none;
+        }
+        .source-pill:hover {
             background-color: #f0f0f0;
-            color: #666666 !important;
+            color: #777777;
         }
         </style>
         """,
@@ -471,12 +473,15 @@ def main():
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
         clicked = st.button("캠페인 정보 가져오기")
-        st.write("")  # 간격
-        sf_col, ad_col = st.columns(2)
-        with sf_col:
-            st.link_button("Salesforce", "#", help="Salesforce 캠페인 메타데이터 기준")
-        with ad_col:
-            st.link_button("Adobe Target", "#", help="Adobe Target 캠페인 메타데이터 기준")
+        st.markdown(
+            """
+            <div style="margin-top: 0.4rem;">
+                <a class="source-pill" href="#">Salesforce</a>
+                <a class="source-pill" href="#">Adobe Target</a>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     with col_info:
         ts = last_updated.strftime("%Y-%m-%d %H:%M:%S")
@@ -485,7 +490,7 @@ def main():
     if clicked:
         st.success("데모용 고정 데이터 기준으로 캠페인 정보를 불러왔습니다.")
 
-    # 👉 Raw Campaign이 기본으로 열려 있도록 expanded=True
+    # Raw Campaign이 기본으로 열리도록
     with st.expander("Raw Campaign List (47개)", expanded=True):
         st.dataframe(df, use_container_width=True)
 
@@ -519,7 +524,7 @@ def main():
 
         svg, svg_height = build_journey_svg(filtered)
 
-        # iframe 없이 바로 SVG 렌더 → DataFrame 과 같은 컬럼 폭 내에서 좌측 정렬
+        # SVG를 바로 렌더 → DataFrame과 같은 컨테이너 기준 왼쪽부터 시작
         st.markdown(
             f"""
             <div style="margin:0; padding:0;">
@@ -585,7 +590,6 @@ def main():
             ],
             use_container_width=True,
         )
-
 
 if __name__ == "__main__":
     main()
